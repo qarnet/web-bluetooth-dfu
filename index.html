@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Web SMP DFU</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, sans-serif;
+      font-size: 15px;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    main { width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 1.25rem; }
+
+    h1 { font-size: 1.4rem; font-weight: 700; color: #60a5fa; }
+    h1 span { font-size: 0.85rem; font-weight: 400; color: #64748b; display: block; margin-top: 0.2rem; }
+
+    section {
+      background: #1e2433;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    section h2 {
+      font-size: 0.7rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #94a3b8;
+    }
+
+    button {
+      font: inherit;
+      cursor: pointer;
+      border: none;
+      border-radius: 7px;
+      padding: 0.5rem 1.1rem;
+      font-size: 0.875rem;
+      font-weight: 500;
+      transition: background 0.15s;
+    }
+    button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-primary   { background: #2563eb; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #3b82f6; }
+    .btn-secondary { background: #334155; color: #e2e8f0; }
+    .btn-secondary:hover:not(:disabled) { background: #475569; }
+    .btn-danger    { background: #1e2433; color: #e2e8f0; }
+    .btn-danger:hover:not(:disabled)    { background: #7f1d1d; }
+    .btn-green     { background: #15803d; color: #fff; width: 100%; padding: 0.75rem; font-size: 0.9rem; }
+    .btn-green:hover:not(:disabled) { background: #16a34a; }
+
+    .file-label {
+      display: inline-block;
+      background: #334155;
+      color: #e2e8f0;
+      padding: 0.5rem 1.1rem;
+      border-radius: 7px;
+      font-size: 0.875rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .file-label:hover { background: #475569; }
+    .file-label.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+    .file-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .file-name { font-size: 0.875rem; color: #4ade80; }
+
+    .chunk-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b; }
+    .chunk-row input[type=number] {
+      width: 60px; background: #334155; border: none; border-radius: 5px;
+      padding: 0.2rem 0.4rem; color: #e2e8f0; font: inherit; font-size: 0.8rem;
+    }
+
+    .btn-row { display: flex; gap: 0.5rem; }
+
+    .slots { display: flex; flex-direction: column; gap: 0.4rem; }
+    .slot {
+      background: #0f1117;
+      border-radius: 7px;
+      padding: 0.5rem 0.75rem;
+      font-family: monospace;
+      font-size: 0.78rem;
+    }
+    .slot-top { display: flex; align-items: center; gap: 0.5rem; }
+    .slot-label { color: #64748b; }
+    .slot-version { color: #e2e8f0; }
+    .slot-hash { color: #475569; margin-top: 0.2rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .badges { display: flex; gap: 0.3rem; margin-left: auto; }
+    .badge {
+      font-size: 0.65rem; padding: 0.15rem 0.4rem; border-radius: 4px; font-family: system-ui;
+    }
+    .badge-green  { background: #14532d; color: #86efac; }
+    .badge-yellow { background: #713f12; color: #fde68a; }
+    .badge-blue   { background: #1e3a5f; color: #93c5fd; }
+
+    .progress-wrap { display: flex; flex-direction: column; gap: 0.3rem; }
+    .progress-bar { height: 8px; background: #334155; border-radius: 99px; overflow: hidden; }
+    .progress-fill { height: 100%; background: #22c55e; border-radius: 99px; transition: width 0.1s; }
+    .progress-text { font-size: 0.75rem; color: #64748b; text-align: right; }
+
+    .log-entries { display: flex; flex-direction: column; gap: 0.15rem; max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 0.78rem; }
+    .log-info  { color: #64748b; }
+    .log-ok    { color: #4ade80; }
+    .log-error { color: #f87171; }
+    .log-ts    { color: #374151; margin-right: 0.4rem; }
+
+    footer { font-size: 0.72rem; color: #374151; text-align: center; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Web SMP DFU <span>Firmware updater for nRF Connect SDK devices via BLE SMP / mcumgr</span></h1>
+
+    <section id="sec-firmware">
+      <h2>Firmware</h2>
+      <div class="file-row">
+        <label class="file-label" id="file-label">
+          Choose .bin file
+          <input type="file" id="file-input" accept=".bin" style="display:none" />
+        </label>
+        <span class="file-name" id="file-name"></span>
+      </div>
+      <div class="chunk-row" id="chunk-row" style="display:none">
+        <span id="file-size"></span>
+        <span>·</span>
+        <label>Chunk size <input type="number" id="chunk-size" min="20" max="244" value="128" /> bytes</label>
+      </div>
+    </section>
+
+    <section id="sec-device">
+      <h2>Device</h2>
+      <div class="btn-row" id="btn-row-connect">
+        <button class="btn-primary" id="btn-connect">Scan &amp; Connect</button>
+      </div>
+      <div class="btn-row" id="btn-row-connected" style="display:none">
+        <button class="btn-secondary" id="btn-refresh">Refresh slots</button>
+        <button class="btn-danger" id="btn-disconnect">Disconnect</button>
+      </div>
+      <div class="slots" id="slots"></div>
+    </section>
+
+    <section id="sec-update">
+      <h2>Update</h2>
+      <button class="btn-green" id="btn-dfu" disabled>Flash Firmware</button>
+      <div class="progress-wrap" id="progress-wrap" style="display:none">
+        <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
+        <div class="progress-text" id="progress-text"></div>
+      </div>
+    </section>
+
+    <section id="sec-log" style="display:none">
+      <h2>Log</h2>
+      <div class="log-entries" id="log-entries"></div>
+    </section>
+
+    <footer>Chrome desktop / Android only &middot; HTTPS required &middot; nRF Connect SDK + MCUboot</footer>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
