@@ -65,9 +65,18 @@ export class SmpClient {
   #onNotify(event) {
     const bytes = new Uint8Array(event.target.value.buffer);
     let frame;
-    try { frame = parseFrame(bytes); } catch { return; }
+    try {
+      frame = parseFrame(bytes);
+    } catch (err) {
+      console.warn('[SMP] Failed to parse notification:', err, 'raw:', bytes);
+      return;
+    }
+    console.debug(`[SMP] ← rx seq=${frame.seq} op=${frame.op} group=${frame.group} cmd=${frame.cmd}`, frame.payload);
     const pending = this.#pending.get(frame.seq);
-    if (!pending) return;
+    if (!pending) {
+      console.warn(`[SMP] Unexpected response seq=${frame.seq} — no pending request`);
+      return;
+    }
     this.#pending.delete(frame.seq);
     pending.resolve(frame);
   }
@@ -96,6 +105,8 @@ export class SmpClient {
   send(op, group, cmd, payload, chunkSize = 244) {
     const seq = this.#seq++ & 0xff;
     const frame = buildFrame(op, group, seq, cmd, payload);
+
+    console.debug(`[SMP] → tx seq=${seq} op=${op} group=${group} cmd=${cmd} total=${frame.byteLength}B chunks=${Math.ceil(frame.byteLength/chunkSize)}`, payload);
 
     return new Promise((resolve, reject) => {
       this.#pending.set(seq, { resolve, reject });

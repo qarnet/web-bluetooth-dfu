@@ -49,8 +49,9 @@ export async function uploadFirmware(client, data, onProgress, chunkSize = 128) 
     const rc = rsp.payload.rc;
     if (rc !== undefined && rc !== 0) throw new Error(`Upload error rc=${rc} at offset ${offset}`);
 
-    // Device echoes back the next expected offset
-    offset = rsp.payload.off ?? offset + chunk.byteLength;
+    const nextOff = rsp.payload.off ?? offset + chunk.byteLength;
+    console.debug(`[DFU] chunk offset=${offset} → device ack'd off=${nextOff} rc=${rc ?? 0}`);
+    offset = nextOff;
     onProgress({ offset, total });
   }
 }
