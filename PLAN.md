@@ -1,5 +1,3 @@
-Here is a draft plan to refine:
-
 # Unified Dual-Protocol BLE DFU Web App
 
 ## Context
@@ -10,10 +8,10 @@ protocol only — SMP DFU (MCUmgr / Zephyr / MCUboot) — with its own hand-writ
 implementations of **both** protocols we care about already exist on disk:
 
 - **SMP DFU** — `boogie/mcumgr-web` at
-  `/mnt/c/Users/thomas-win/Nextcloud/Projects/nrf-connect-sdk-dfu/mcumgr-web-main/`
+  `/mnt/c/Users/thomas-win/Nextcloud/Web-Bluetooth-Resources/nrf-connect-sdk-dfu/mcumgr-web-main/`
   (vanilla JS, standalone `cbor.js`, Jest-tested).
 - **nRF5 SDK legacy "Secure DFU"** — `thegecko/web-bluetooth-dfu` at
-  `/mnt/c/Users/thomas-win/Nextcloud/Projects/nrf5sdk-dfu/web-bluetooth-dfu-master/`
+  `/mnt/c/Users/thomas-win/Nextcloud/Web-Bluetooth-Resources/nrf5sdk-dfu/web-bluetooth-dfu-master/`
   (TypeScript, `.zip` package format, jszip + crc-32).
 
 We are reinventing the wheel. The goal is **one** website that updates devices
@@ -22,11 +20,28 @@ user-facing protocol picker), built on the proven external code rather than
 bespoke implementations.
 
 **Decisions made with the user:**
-- The SMP engine will be **replaced** with `mcumgr-web`'s code (not the repo's
-  current `smp/protocol.js`/`image.js`). Accepted tradeoff: the existing headless
-  harness loses its target and must be rewritten and re-verified on hardware.
-- **Buttonless DFU** (app firmware → reboot into bootloader → reconnect) is
-  **in scope**.
+1. The SMP engine will be **replaced** with `mcumgr-web`'s code (not the repo's
+   current `smp/protocol.js`/`image.js`). Accepted tradeoff: the existing headless
+   harness loses its target and must be rewritten and re-verified on hardware.
+2. **SMP chunking/MTU:** Use the `mcumgr-web` implementation for payload sizing
+   and timeout/retry logic. The UI chunk-size input (if kept) maps to the
+   provider's internal `_mtu` rather than the current manual BLE-write fragmenting.
+   Default `_mtu` is capped to a safe BLE value (≤244 bytes total frame).
+3. **Buttonless DFU** (app firmware → reboot into bootloader → reconnect) is
+   **in scope**. Support both standard buttonless characteristics:
+   `8ec90003-f315-4f60-9fb8-838830daea50` (without bonds) and
+   `8ec90004-f315-4f60-9fb8-838830daea50` (with bonds).
+4. **Nordic multi-image `.zip`:** First iteration targets **single-application**
+   packages only. Multi-image packages (softdevice, bootloader, combinations) are
+   in scope but deferred after the single-image path is verified end-to-end.
+5. **Pre-upload `.bin` metadata:** Rich MCUboot metadata display (version, hash,
+   protected TLVs, tags) is a desired follow-up feature — not first-to-implement,
+   but the ported `mcumgr.js` already contains the `imageInfo()` parser so the
+   adapter can expose it later without structural changes.
+6. **Hardware available:** An nRF52840 DK (SMP target) and a Nordic Secure DFU
+   device (Nordic target) are both on-hand, along with an ASUS USB-BT500 dongle
+   for headless BLE access. `make test` gates SMP work; Nordic verification is
+   both headless (`nordic-dfu-test.mjs`) and manual Chrome.
 
 ## Goal
 
@@ -152,6 +167,8 @@ a **hard stop** with a precise message — never silently pick one.
   already-connected GATT characteristic instead of doing its own
   `navigator.bluetooth` picker. This both fits the shared connect layer and
   makes the headless harness possible. Same SMP service/char UUIDs as today.
+  **Chunking:** port `mcumgr-web`'s MTU-based payload sizing and timeout/retry
+  logic. Default `_mtu` capped to ≤244 for safe BLE transport; configurable.
 - **`smp/smp-provider.js`** — adapter implementing `DfuProvider`:
   `attach` builds the `MCUManager` over `session`'s SMP characteristic;
   `readState` -> image-state list -> `SlotDescriptor[]`;
@@ -189,15 +206,19 @@ layer owns connection).
   `transferFirmware`, emitting `phase` (`create`/`transfer`/`crc`/`execute`);
   a multi-image package (softdevice+bootloader+app) means **multiple sequential
   runs, each with its own reboot** — the loop and the UI must survive that.
+  **Scope:** single-application `.zip` first; multi-image loop is architected
+  for now but not verified until the single-image path is green.
 
 **Buttonless flow** — when detection finds FE59 in *app mode* (only the
 buttonless characteristic): the provider writes the buttonless command, the
 device disconnects and reboots into the bootloader (re-advertising FE59 with a
 changed BLE address), the provider emits `needs-reconnect`, and `app.js` prompts
 the user to click Connect again. The second connect lands on the bootloader's
-FE59 and the real transfer begins. (Modern buttonless exposes FE59 directly;
-legacy custom trigger-service UUIDs are out of scope unless added to the
-registry later.)
+FE59 and the real transfer begins.
+  - Supports both `8ec90003…` (buttonless without bonds) and `8ec90004…`
+    (buttonless with bonds).
+  - Legacy custom trigger-service UUIDs are out of scope unless added to the
+    registry later.
 
 ## Vendored dependencies
 
@@ -248,21 +269,23 @@ a protocol switch the user sees.
    service discovered later. The registry forces the connect layer to pass the
    full union every time. Highest-risk constraint.
 2. **Buttonless reboot** is a two-connection user flow with a device reboot and
-   BLE-address change mid-update — the UI must explain it clearly.
+   BLE-address change mid-update — the UI must explain it clearly. Both
+   buttonless-variants (`03` and `04`) must be handled.
 3. **Multi-image Nordic packages** = multiple sequential DFU runs, each with its
-   own reboot/reconnect.
+   own reboot/reconnect. **Architected for now, verified later** (single-image
+   first).
 4. **Harness regression** — replacing the SMP engine invalidates the current
    harness; rewrite + hardware re-verify before moving on.
 5. **mcumgr-web `cbor.js` / `mcumgr.js` are not ES modules** — porting must add
    exports and strip the built-in device picker without changing framing logic.
-6. **Nordic hardware** — verifying the Nordic path needs an nRF51/nRF52 flashed
-   with an nRF5-SDK Secure DFU bootloader, different from the nRF52840 DK +
-   `smp_svr` used today. Sample `.zip`s exist in the reference repo's `firmware/`.
+6. **Nordic hardware** — verifying the Nordic path needs the nRF5-SDK Secure DFU
+   bootloader device on-hand (available). Sample `.zip`s exist in the reference
+   repo's `firmware/`.
 
 ## Ordered implementation steps
 
 1. Vendor `vendor/jszip.js` + `vendor/crc-32.js`; document regeneration.
-2. `core/events.js` — EventTarget emitter base.
+2. `core/events.js` — thin `EventTarget` extension (native in browser and Node 18+).
 3. `core/provider.js` — `DfuProvider` base + capability contract.
 4. `core/registry.js` — static provider table.
 5. Generalize `bluetooth/connect.js` — multi-service `requestDevice`, return
