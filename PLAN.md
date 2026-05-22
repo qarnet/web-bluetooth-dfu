@@ -10,7 +10,7 @@ implementations of **both** protocols we care about already exist on disk:
 - **SMP DFU** — `boogie/mcumgr-web` at
   `/mnt/c/Users/thomas-win/Nextcloud/Web-Bluetooth-Resources/nrf-connect-sdk-dfu/mcumgr-web-main/`
   (vanilla JS, standalone `cbor.js`, Jest-tested).
-- **nRF5 SDK legacy "Secure DFU"** — `thegecko/web-bluetooth-dfu` at
+- **nRF5 SDK "Secure DFU"** — `thegecko/web-bluetooth-dfu` at
   `/mnt/c/Users/thomas-win/Nextcloud/Web-Bluetooth-Resources/nrf5sdk-dfu/web-bluetooth-dfu-master/`
   (TypeScript, `.zip` package format, jszip + crc-32).
 
@@ -18,6 +18,66 @@ We are reinventing the wheel. The goal is **one** website that updates devices
 running **either** protocol, with the protocol detected automatically (no
 user-facing protocol picker), built on the proven external code rather than
 bespoke implementations.
+
+## Authoritative references on disk
+
+In addition to the two reference web implementations above, the following
+sources are local and treated as ground truth:
+
+- **nRF5 SDK 17.1.0** —
+  `/mnt/c/Users/thomas-win/Nextcloud/Web-Bluetooth-Resources/nrf5SDK/nRF5_SDK_17.1.0_ddde560/`
+  - `components/ble/ble_services/ble_dfu/ble_dfu.{c,h}` — application-side
+    buttonless service. Confirms: service UUID `0xFE59`, buttonless 16-bit
+    char IDs `0x0003` (unbonded) and `0x0004` (bonded) over Nordic vendor
+    base UUID `8e:c9:00:00…50` — matches the plan's UUIDs exactly.
+  - `components/libraries/bootloader/ble_dfu/nrf_dfu_ble.c` — bootloader-side
+    GATT layout, MTU negotiation, advertising. Bootloader advertises with
+    name `NRF_DFU_BLE_ADV_NAME` (default `"DfuTarg"`) — useable as a
+    `namePrefix` filter alongside the FE59 service UUID.
+  - `components/libraries/bootloader/dfu/dfu-cc.proto` — init-packet
+    protobuf schema. Informational only: the Web DFU engine writes the
+    init-packet `.dat` file from the `.zip` as **opaque bytes** to the
+    Control Point; no protobuf decoder needed in the browser.
+  - `examples/dfu/secure_dfu_test_images/ble/nrf52840/` — **pre-built test
+    fixtures**, used directly as our test corpus (see Verification):
+    - `hrs_application_s140.zip` — single-app package
+    - `softdevice_s140.zip` — softdevice-only
+    - `bootloader_secure_ble_debug_{with,without}_bonds_s140.zip` — BL-only
+    - `ble_app_buttonless_dfu_{with,without}_bonds_s140.zip` — buttonless app
+    - `sd_s140_bootloader_buttonless_with_setting_page_dfu_secure_ble_debug_{with,without}_bonds.hex`
+      — flashable baseline. **Programming this onto the nRF52840 DK turns
+      the same board into a Nordic Secure DFU target**, eliminating the
+      need for a second physical device.
+- **nRF5 SoftDevice releases** —
+  `/mnt/c/Users/thomas-win/Nextcloud/Web-Bluetooth-Resources/nrf5SDK/s{112,113,122,132,140}nrf52{720,800}/`
+  — `.hex` images for SD upgrade testing if/when multi-image is verified.
+- **WebBluetoothCG/registries** —
+  `.../general-web-bluetooth/registries-master/gatt_blocklist.txt`. Confirms
+  SMP `8d53dc1d-…` and Secure DFU `0xFE59` are **not** blocklisted, while
+  **Nordic Legacy DFU `00001530-1212-efde-1523-785feabcd123` is
+  blocklisted** by Chrome (and policy supports low-latency additions). Legacy
+  DFU is therefore hard out-of-scope at the API layer, not just by design.
+- **WebBluetoothCG/web-bluetooth** —
+  `.../general-web-bluetooth/web-bluetooth-main/implementation-status.md`.
+  Relevant constraints:
+  - `writeValueWithResponse` / `writeValueWithoutResponse` are the canonical
+    APIs from Chrome 85+ (the plain `writeValue` overload is deprecated).
+    Nordic Control Point = with-response; Nordic Packet = without-response;
+    SMP characteristic = without-response. The connect/IO layer must use
+    the explicit variants, not the deprecated overload.
+  - Some GATT operations cannot run in parallel — both engines already
+    serialize, but the shared connect layer must not introduce concurrent
+    GATT calls.
+  - `getDevices()` and Persistent Device Permissions are flag-gated. We
+    therefore cannot transparently re-acquire the device across a
+    buttonless reboot: the buttonless flow must surface a "Reconnect"
+    button and the user clicks through `requestDevice` a second time.
+  - Web Bluetooth is Chrome/Edge/Samsung-Internet/Opera only. Firefox and
+    Safari are not implemented; iOS users need Bluefy/WebBLE. Document in
+    README, do not engineer around it.
+- **WebBluetoothCG/manual-tests** —
+  `.../general-web-bluetooth/manual-tests-main/`. Reference patterns for
+  `characteristic_readwrite`, `characteristic_notify`, `cancel_gatt_connect`.
 
 **Decisions made with the user:**
 1. The SMP engine will be **replaced** with `mcumgr-web`'s code (not the repo's
@@ -38,10 +98,23 @@ bespoke implementations.
    protected TLVs, tags) is a desired follow-up feature — not first-to-implement,
    but the ported `mcumgr.js` already contains the `imageInfo()` parser so the
    adapter can expose it later without structural changes.
-6. **Hardware available:** An nRF52840 DK (SMP target) and a Nordic Secure DFU
-   device (Nordic target) are both on-hand, along with an ASUS USB-BT500 dongle
-   for headless BLE access. `make test` gates SMP work; Nordic verification is
-   both headless (`nordic-dfu-test.mjs`) and manual Chrome.
+6. **Hardware available:** An nRF52840 DK and an ASUS USB-BT500 dongle for
+   headless BLE access. The same DK serves as **both** the SMP target (current
+   Zephyr `smp_svr` build) and — by re-flashing one of the SDK 17.1.0
+   `sd_s140_bootloader_buttonless_with_setting_page_dfu_secure_ble_debug_*.hex`
+   baselines — the Nordic Secure DFU target. `make test` gates SMP work;
+   Nordic verification is both headless (`nordic-dfu-test.mjs`) and manual
+   Chrome, using the SDK-shipped `.zip`s as the test corpus.
+7. **Legacy nRF5 DFU (`0x1530` service) is hard out-of-scope.** Chrome's GATT
+   blocklist forbids it; the registry policy allows fast blocklist updates,
+   so even a workaround would be brittle. The registry and detection layer
+   must reject `00001530-1212-efde-1523-785feabcd123` explicitly with a
+   message pointing users at a Secure DFU bootloader upgrade.
+8. **Write API:** all characteristic writes use the explicit
+   `writeValueWithResponse` / `writeValueWithoutResponse` (Chrome 85+).
+   The deprecated `writeValue` overload is never called. Wired per-char:
+   Nordic Control Point = with-response, Nordic Packet = without-response,
+   SMP characteristic = without-response.
 
 ## Goal
 
@@ -143,15 +216,22 @@ Two independent signals; the user may supply them in either order.
 - neither -> unknown (do not hard-fail; device signal may still arrive).
 
 **Device-side** — `bluetooth/connect.js`:
-- `requestDevice` with `filters` = OR-union of every registry service UUID, and
-  `optionalServices` = the **same full union** (required: any service touched by
-  `getPrimaryService` must be declared up front).
+- `requestDevice` with `filters` = OR-union of every registry service UUID
+  **plus** a `{namePrefix: "DfuTarg"}` filter for the Nordic bootloader (it
+  advertises FE59 *and* the name `DfuTarg`; the dual filter survives stacks
+  that under-report service UUIDs in advertisements). `optionalServices` =
+  the **same full UUID union** — any service touched by `getPrimaryService`
+  must be declared up front.
 - after `gatt.connect()`, call `getPrimaryServices()`; match UUIDs to registry.
 - SMP service `8d53dc1d-…` -> SMP.
 - Nordic service `0000fe59-…` present -> Nordic. Then inspect its characteristics:
   - Control Point `8ec90001-…` present -> **bootloader mode**, ready to transfer.
   - only Buttonless `8ec90003-…` (or with-bonds variant) -> **app mode**, must
     trigger the buttonless reboot first (see Nordic provider below).
+- Blocklist guard: if `00001530-1212-efde-1523-785feabcd123` appears in the
+  service list, hard-stop with a Legacy-DFU-not-supported message. (Chrome
+  will refuse access anyway, but the message has to be ours, not a generic
+  SecurityError.)
 
 **Combination rule:** the device signal is authoritative when present (cannot
 flash a protocol the device does not speak); the file signal pre-arms the UI
@@ -195,9 +275,14 @@ layer owns connection).
 - **`nordic/package.js`** — ported `.zip` parser over `vendor/jszip.js`:
   `loadPackage(arrayBuffer)` -> `{manifest, getImages()}`. Must handle all
   manifest variants (`application`, `softdevice`, `bootloader`,
-  `softdevice_bootloader`). Nordic `.bin`s carry no self-magic, so validation
-  is *structural* (zip + manifest + referenced files exist); content CRC is
-  checked *during* transfer against device-reported checksums.
+  `softdevice_bootloader`). Each image entry pairs a `.dat` (the protobuf-
+  encoded init packet — opaque to us, written as bytes to the Control Point
+  during `transferInit`) with a `.bin` (the firmware payload streamed over
+  the Packet characteristic). The protobuf schema lives in `dfu-cc.proto`
+  for human reference; we do not link a protobuf library. Nordic `.bin`s
+  carry no self-magic, so file-level validation is *structural* (zip +
+  manifest + referenced `.dat`/`.bin` files exist); content CRC is checked
+  *during* transfer against device-reported checksums.
 - **`nordic/nordic-provider.js`** — adapter implementing `DfuProvider`:
   capabilities all-false except `multiObject`;
   `readState` -> `[]`;
@@ -217,8 +302,19 @@ the user to click Connect again. The second connect lands on the bootloader's
 FE59 and the real transfer begins.
   - Supports both `8ec90003…` (buttonless without bonds) and `8ec90004…`
     (buttonless with bonds).
+  - Reconnect is **always a fresh `requestDevice` prompt**: Chrome's
+    `getDevices()` + Persistent Device Permissions are flag-gated, so we
+    cannot silently re-acquire the device by its prior identifier. The UI
+    must make the second click explicit ("Device rebooted — click Reconnect").
   - Legacy custom trigger-service UUIDs are out of scope unless added to the
     registry later.
+
+**MTU / chunk size:** the SDK 17.1.0 bootloader negotiates ATT MTU up to
+`NRF_SDH_BLE_GATT_MAX_MTU_SIZE` (typically 247), but Web Bluetooth does not
+expose the negotiated MTU. The ported engine therefore keeps the upstream
+default Packet chunk size (≤20 bytes payload, the BLE-default-MTU floor).
+This is slower than native nRF Connect but is the only portable choice; do
+not "optimize" it without a way to query the real MTU.
 
 ## Vendored dependencies
 
@@ -268,19 +364,30 @@ a protocol switch the user sees.
 1. **`optionalServices` must list every UUID up front** — you cannot reach a
    service discovered later. The registry forces the connect layer to pass the
    full union every time. Highest-risk constraint.
-2. **Buttonless reboot** is a two-connection user flow with a device reboot and
-   BLE-address change mid-update — the UI must explain it clearly. Both
+2. **GATT blocklist drift** — Chrome can add UUIDs at any time
+   (`gatt_blocklist_policy.md` is explicit about low-latency updates). Today
+   FE59 and the SMP service are clear; if either is ever blocklisted, the app
+   stops working with no code change on our side. Document and accept; no
+   mitigation possible.
+3. **Buttonless reboot** is a two-connection user flow with a device reboot,
+   BLE-address change, and a *mandatory* fresh `requestDevice` prompt
+   (Persistent Permissions are flag-gated). UI must explain it clearly. Both
    buttonless-variants (`03` and `04`) must be handled.
-3. **Multi-image Nordic packages** = multiple sequential DFU runs, each with its
+4. **Multi-image Nordic packages** = multiple sequential DFU runs, each with its
    own reboot/reconnect. **Architected for now, verified later** (single-image
-   first).
-4. **Harness regression** — replacing the SMP engine invalidates the current
+   first). SoftDevice upgrades are higher-risk because a failure mid-SD-flash
+   bricks the device until reprogrammed over SWD.
+5. **Harness regression** — replacing the SMP engine invalidates the current
    harness; rewrite + hardware re-verify before moving on.
-5. **mcumgr-web `cbor.js` / `mcumgr.js` are not ES modules** — porting must add
+6. **mcumgr-web `cbor.js` / `mcumgr.js` are not ES modules** — porting must add
    exports and strip the built-in device picker without changing framing logic.
-6. **Nordic hardware** — verifying the Nordic path needs the nRF5-SDK Secure DFU
-   bootloader device on-hand (available). Sample `.zip`s exist in the reference
-   repo's `firmware/`.
+7. **MTU is invisible to Web Bluetooth** — we keep the engine's 20-byte
+   default. Throughput will be visibly slower than native nRF Connect; note in
+   README so users do not raise it as a bug.
+8. **Nordic hardware** — verifying the Nordic path is now low-risk: the
+   nRF52840 DK can be re-flashed with a SDK 17.1.0
+   `bootloader_secure_..._with_setting_page_...hex` baseline to become a
+   Nordic Secure DFU target, and the SDK ships matching `.zip` payloads.
 
 ## Ordered implementation steps
 
@@ -288,7 +395,9 @@ a protocol switch the user sees.
 2. `core/events.js` — thin `EventTarget` extension (native in browser and Node 18+).
 3. `core/provider.js` — `DfuProvider` base + capability contract.
 4. `core/registry.js` — static provider table.
-5. Generalize `bluetooth/connect.js` — multi-service `requestDevice`, return
+5. Generalize `bluetooth/connect.js` — multi-service `requestDevice` (union of
+   service filters + `namePrefix:"DfuTarg"`), explicit
+   `writeValueWith{,out}Response` wrappers, Legacy-DFU UUID guard, return
    `{device, server, services}`.
 6. Port mcumgr-web -> `smp/cbor.js` + `smp/mcumgr.js` (transport-decoupled).
 7. `smp/smp-provider.js` adapter. Remove `smp/protocol.js`, `smp/image.js`,
@@ -309,15 +418,37 @@ a protocol switch the user sees.
 
 ## Verification
 
+Test corpus is the SDK 17.1.0 bundle at
+`.../nrf5SDK/nRF5_SDK_17.1.0_ddde560/examples/dfu/secure_dfu_test_images/ble/nrf52840/`.
+All filenames below are from that directory.
+
 - **SMP regression (first):** `make test` on the nRF52840 DK — rewritten
   `dfu-test.mjs` passes exit 0; negative test (baseline `.bin`) exits non-zero.
 - **SMP browser:** Chrome manual per `TESTING.md` — pick `.bin`, connect, flash,
   confirm; slot UI works; protocol badge shows "SMP".
-- **Nordic structural:** feed a sample `.zip` from the reference repo's
-  `firmware/` to `nordic/package.js`; assert manifest + parts parse.
-- **Nordic non-buttonless:** device flashed with an nRF5-SDK Secure DFU
-  bootloader (boots into FE59); run `tools/nordic-dfu-test.mjs` or Chrome manual.
-- **Nordic buttonless:** Chrome manual — verify reboot + reconnect-prompt flow.
+- **Nordic structural (no hardware):** feed each of `hrs_application_s140.zip`,
+  `softdevice_s140.zip`, `bootloader_secure_ble_debug_without_bonds_s140.zip`,
+  `ble_app_buttonless_dfu_without_bonds_s140.zip`, and at least one
+  `softdevice_bootloader` package to `nordic/package.js`; assert each
+  manifest variant + referenced `.dat`/`.bin` parts parse.
+- **Nordic bootloader-mode (headless):** flash the DK with
+  `bootloader_secure_ble_debug_without_bonds_s140.hex`, hold the trigger so
+  it boots into FE59; run `tools/nordic-dfu-test.mjs` against
+  `hrs_application_s140.zip` over the USB-BT500 dongle.
+- **Nordic buttonless (Chrome manual):** flash the DK with
+  `sd_s140_bootloader_buttonless_with_setting_page_dfu_secure_ble_debug_without_bonds.hex`;
+  open the app, pick `ble_app_buttonless_dfu_without_bonds_s140.zip`,
+  connect (lands on app-mode FE59 with only buttonless char), confirm the
+  app issues the buttonless command, the device reboots, the
+  `needs-reconnect` UI appears, and a second Connect completes the transfer.
+- **Nordic bonded variant (Chrome manual):** repeat with the
+  `with_bonds` `.hex` + `with_bonds` `.zip` to exercise the `8ec90004…`
+  characteristic path.
+- **Legacy DFU rejection (Chrome manual):** any device advertising
+  `00001530-…` (or a mock thereof) must produce the hard-stop message, never
+  a generic SecurityError.
 - **Detection matrix:** Chrome manual — every combination of file/device signal,
   especially both conflict cases (must hard-stop with the right message) and the
   buttonless app-mode case.
+- **Browser support note:** all verification is Chrome/Edge. Firefox/Safari
+  are out of scope (no Web Bluetooth); document, do not test.
