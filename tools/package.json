@@ -1,0 +1,12 @@
+{
+  "name": "web-smp-dfu-tools",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only headless DFU test harness. Not part of the shipped app.",
+  "scripts": {
+    "dfu-test": "node dfu-test.mjs"
+  },
+  "dependencies": {
+    "node-ble": "^1.9.0"
+  }
+}

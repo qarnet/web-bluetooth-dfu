@@ -1,78 +1,78 @@
 # Project Status — web-smp-dfu
 
-## What's already done
+## What's done
 
 ### 1. Firmware adapted from NCS sample
 - **Source**: `nrf/samples/dfu/smp_svr` from nRF Connect SDK v3.3.0 (`~/ncs/v3.3.0`)
-- **Location in repo**: `firmware/`
-- **Files created**:
-  - `firmware/CMakeLists.txt`
-  - `firmware/prj.conf`
-  - `firmware/Kconfig.sysbuild`
-  - `firmware/sysbuild.conf`
-  - `firmware/sysbuild/mcuboot/prj.conf`
-  - `firmware/src/main.c`
-  - `firmware/src/bluetooth.c`
-  - `firmware/src/common.h`
-- **Config highlights**: Bluetooth LE SMP transport enabled, large MTU (251), packet reassembly (5×498 bytes), MCUboot swap mode, image management + OS reset groups, shell transport as fallback.
+- **Location**: `firmware/` (`CMakeLists.txt`, `prj.conf`, `Kconfig.sysbuild`,
+  `sysbuild.conf`, `sysbuild/mcuboot/prj.conf`, `src/main.c`, `src/bluetooth.c`,
+  `src/common.h`)
+- **Config highlights**: BLE SMP transport, large MTU (498), packet reassembly,
+  MCUboot swap mode, image-management + OS-reset groups, shell transport fallback.
 
 ### 2. Built for nRF52840 DK (`PCA10056`)
-- **Build command used**:
-  ```bash
-  nrfutil sdk-manager toolchain launch --ncs-version v3.3.0 --chdir ~/ncs/v3.3.0 -- \
-    west build -b nrf52840dk/nrf52840 --sysbuild --build-dir <...>/firmware/build <repo>/firmware
-  ```
-- **First image**: default version = `1.0.0`
-  - Output: `firmware/build/firmware/zephyr/zephyr.signed.bin`
-- **Second image**: bumped to version `2.0.0`
-  - Output: `firmware/build-v2/firmware/zephyr/zephyr.signed.bin`
-- **MCUboot magic verified** (`0x96f3b83d`) on both `.signed.bin` files.
+- v1 baseline → `firmware/build/` (image version `0.0.0+0`)
+- v2 update → `firmware/build-v2/` (image version `2.0.0`)
+- MCUboot magic verified on both `zephyr.signed.bin` files.
 
 ### 3. Flashed the device
-- **Command**: `nrfutil device program --firmware <repo>/firmware/build/merged.hex --traits jlink`
-- **Result**: Device is running the initial SMP server firmware with BLE advertising.
+- `nrfutil device program --firmware firmware/build/merged.hex --traits jlink`
+- Device runs the SMP server, advertises as **"Zephyr"** over BLE.
+
+### 4. Automated A→B→C→D workflow
+A headless test harness now runs the full DFU over real BLE — no browser, no
+manual steps. It reuses the app's actual `smp/protocol.js` + `smp/image.js`
+modules over a node-ble transport, so the test exercises the shipped protocol
+code. See `tools/dfu-test.mjs` and the `Makefile`.
+
+| Step | Command | What it does |
+|---|---|---|
+| **A** Write code | — | edit `firmware/src/*` or `smp/*.js` |
+| **B** Compile | `make build` | west builds v1 + v2 images |
+| **C** Flash | `make flash` | flash the v1 baseline |
+| **D** Test | `make test` | re-flash baseline, run the BLE DFU harness |
+| Full loop | `make dfu` | B + D |
+
+The harness asserts: device boots the baseline → upload v2 → mark for test →
+reset → MCUboot swaps → slot 0 reports v2 `active` → confirm → slot 0
+`confirmed`. Exit code 0 = pass.
 
 ---
 
-## What's next (decisions needed)
+## One-time environment setup
 
-You said the main focus is testing the **Web Bluetooth API** part of the project. The current server environment is headless Linux — no Chrome, no BlueZ BLE stack, and no graphical display.
+The harness needs a working BLE stack. The WSL2 kernel supports Bluetooth
+(`CONFIG_BT=m`, `btusb` present) and the ASUS USB-BT500 dongle is passed
+through; only userspace setup is missing. Run these once (`!` prefix in the
+Claude Code prompt runs them in-session):
 
-### Option A — Run the web app locally on this machine (for remote access)
-1. Serve the app with `python3 -m http.server 8080` from the repo root.
-2. You open it in Chrome on your own computer (Chrome desktop or Android).
-3. **Requirement**: You need to either:
-   - Enable the Chrome flag `unsafely-treat-insecure-origin-as-secure` for `http://<server-ip>:8080`, **or**
-   - Serve over HTTPS (e.g., `caddy file-server --root . --listen :8080`).
-4. In the app: choose the v2 `zephyr.signed.bin`, scan & connect to "Zephyr", flash, wait for reboot, then reconnect to verify slot 0 shows `2.0.0`.
+```
+sudo apt-get update && sudo apt-get install -y bluez build-essential
+sudo mkdir -p /lib/firmware/rtl_bt
+sudo curl -L -o /lib/firmware/rtl_bt/rtl8761bu_fw.bin \
+  https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/rtl_bt/rtl8761bu_fw.bin
+sudo curl -L -o /lib/firmware/rtl_bt/rtl8761bu_config.bin \
+  https://git.kernel.org/pub/scm/linux/kernel/git/firmware/linux-firmware.git/plain/rtl_bt/rtl8761bu_config.bin
+sudo modprobe btusb
+sudo systemctl enable --now bluetooth
+sudo usermod -aG bluetooth $USER      # then restart the WSL shell
+bluetoothctl show                     # must list a controller, Powered: yes
+```
 
-### Option B — Python + bleak sanity checker (before trusting the web app)
-1. Install a venv and `bleak` to scan for the advertising "Zephyr" device.
-2. Optionally write a minimal Python SMP client to do `image list` / `upload` / `test` / `reset` over BLE.
-3. This proves the firmware side works end-to-end, isolating any web-app bugs.
+Then install the harness deps: `make harness-deps` (pure JS, no compiler step).
 
-### Option C — Both A and B
-Do the Python sanity check first to confirm the device advertises and responds to SMP, then proceed to the web app test in Chrome.
-
----
-
-## Quick reference — files to flash / upload
-
-| Purpose | Path |
-|---|---|
-| Initial flash (MCUboot + app v1.0.0) | `firmware/build/merged.hex` |
-| Update image for web DFU (app v2.0.0) | `firmware/build-v2/firmware/zephyr/zephyr.signed.bin` |
+If `bluetoothctl show` lists no controller: re-attach the dongle via `usbipd`
+from Windows, then `sudo modprobe -r btusb && sudo modprobe btusb`.
 
 ---
 
-## Outstanding questions / decisions
+## Scope notes
 
-1. **Do you want me to start the HTTP server now?**
-2. **Can your client machine reach this server over the network?**
-3. **Do you want the Python bleak scan/SMP sanity script written before the web test?**
-4. **Chunk size**: web app default is 128 B. You can tune up to 244 B in the UI if the MTU negotiation succeeds (expected ~247 B on nRF).
-5. **Should the device name be something other than "Zephyr"?** (`CONFIG_BT_DEVICE_NAME` in `prj.conf`).
-
----
-
-*Written automatically. Feel free to edit and return when ready to continue.*
+- The harness covers `smp/protocol.js` + `smp/image.js` (framing, CBOR,
+  chunking, the full DFU sequence). It does **not** exercise
+  `bluetooth/connect.js` (`navigator.bluetooth`) or the DOM — verify those
+  manually in Chrome per `TESTING.md`.
+- Known gap surfaced while building the harness: `app.js`'s DFU flow stops
+  after `resetDevice` and never calls `confirmImage`, so a real browser DFU
+  would revert on the next reboot. The harness does confirm. Fixing `app.js`
+  to confirm post-reboot is a candidate follow-up.

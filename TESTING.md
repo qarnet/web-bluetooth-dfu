@@ -4,9 +4,37 @@
 
 - nRF52840 DK (`PCA10056`) — recommended, most RAM headroom
 - NCS workspace (`west init`'d, `west update`'d)
-- Chrome desktop or Android Chrome
+- Chrome desktop or Android Chrome (for the manual full-stack check)
 
 ---
+
+## Automated harness (headless, no browser)
+
+`tools/dfu-test.mjs` runs the full DFU over real BLE and reuses the app's own
+`smp/protocol.js` + `smp/image.js` — so it tests the shipped protocol code, not
+a reimplementation. It does **not** cover `bluetooth/connect.js` or the DOM;
+use the manual Chrome steps below for those.
+
+One-time setup (BLE stack + harness deps) is in `STATUS.md`. Then:
+
+```bash
+make build    # B — west builds v1 baseline + v2 update image
+make test     # C+D — flash baseline, run the DFU harness
+make dfu      # B+C+D — full loop after a code change
+```
+
+The harness exits 0 on success. Override the target with `DEVICE_NAME=...` or
+`DEVICE_MAC=...` env vars; run the harness directly with
+`node tools/dfu-test.mjs <path-to-zephyr.signed.bin>`.
+
+To prove the assertion has teeth, point it at the **baseline** `.bin` (same
+version as what's running) — it must exit non-zero, since no swap is observable.
+
+---
+
+## Manual full-stack check (Chrome)
+
+The steps below exercise the browser path the harness skips.
 
 ## Step 1 — Flash the initial firmware
 

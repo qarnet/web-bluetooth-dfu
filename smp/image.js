@@ -18,7 +18,7 @@ export function validateImage(data) {
  * Each: { slot, version, hash, active, pending, confirmed }
  */
 export async function listImages(client) {
-  const rsp = await client.send(Op.ReadReq, Group.Image, ImageCmd.List, {});
+  const rsp = await client.send(Op.ReadReq, Group.Image, ImageCmd.State, {});
   const images = rsp.payload.images ?? [];
   return images.map((img) => ({
     slot:      img.slot,
@@ -58,14 +58,16 @@ export async function uploadFirmware(client, data, onProgress, chunkSize = 128) 
 
 /** Mark image in slot 1 for testing on next boot. */
 export async function testImage(client, hexHash) {
-  const rsp = await client.send(Op.WriteReq, Group.Image, ImageCmd.Test, { hash: hexToBuf(hexHash) });
+  const rsp = await client.send(Op.WriteReq, Group.Image, ImageCmd.State,
+    { hash: hexToBuf(hexHash), confirm: false });
   const rc = rsp.payload.rc;
   if (rc !== undefined && rc !== 0) throw new Error(`Image test failed rc=${rc}`);
 }
 
 /** Confirm the currently running image permanently. */
 export async function confirmImage(client, hexHash) {
-  const rsp = await client.send(Op.WriteReq, Group.Image, ImageCmd.Confirm, { hash: hexToBuf(hexHash) });
+  const rsp = await client.send(Op.WriteReq, Group.Image, ImageCmd.State,
+    { hash: hexToBuf(hexHash), confirm: true });
   const rc = rsp.payload.rc;
   if (rc !== undefined && rc !== 0) throw new Error(`Image confirm failed rc=${rc}`);
 }
@@ -92,6 +94,6 @@ function hexToBuf(hex) {
 }
 
 function fmtVersion(v) {
-  if (!v) return 'unknown';
-  return `${v.major ?? 0}.${v.minor ?? 0}.${v.revision ?? 0}+${v.build_num ?? 0}`;
+  // mcumgr encodes the image version as a string, e.g. "2.0.0".
+  return typeof v === 'string' && v ? v : 'unknown';
 }

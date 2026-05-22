@@ -1,4 +1,11 @@
-import { encode, decode } from '../vendor/cbor-x.js';
+import { Encoder } from '../vendor/cbor-x.js';
+
+// SMP requires plain, standard CBOR. cbor-x defaults emit its non-standard
+// "records" structure tag and encode Uint8Arrays as tagged typed arrays — the
+// device's zcbor decoder rejects both. Force standard maps + plain byte strings.
+const cbor = new Encoder({ useRecords: false, tagUint8Array: false });
+const encode = (value) => cbor.encode(value);
+const decode = (bytes) => cbor.decode(bytes);
 
 // SMP header layout (8 bytes, big-endian):
 //   Op(1) | Flags(1) | Length(2) | Group(2) | Seq(1) | Cmd(1)
@@ -6,7 +13,9 @@ const HEADER_SIZE = 8;
 
 export const Op = { ReadReq: 0, ReadRsp: 1, WriteReq: 2, WriteRsp: 3 };
 export const Group = { OS: 0, Image: 1 };
-export const ImageCmd = { Upload: 0, List: 1, Test: 2, Confirm: 3, Erase: 4 };
+// mcumgr image-management command IDs (zephyr img_mgmt.h).
+// State (0) serves both image list (read op) and test/confirm (write op).
+export const ImageCmd = { State: 0, Upload: 1, Erase: 5 };
 export const OsCmd = { Reset: 5 };
 
 function buildFrame(op, group, seq, cmd, payload) {
