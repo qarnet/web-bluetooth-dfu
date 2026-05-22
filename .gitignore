@@ -22,3 +22,14 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Zephyr / NCS build artifacts
+firmware/build*
+firmware/.cache
+**/*.obj
+**/*.a
+**/*.elf
+**/*.bin
+**/*.hex
+**/*.map
+**/*.pickle
