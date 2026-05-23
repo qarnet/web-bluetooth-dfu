@@ -126,6 +126,11 @@
   </style>
 </head>
 <body>
+  <div id="compat-banner" style="display:none; background:#7f1d1d; color:#fecaca; padding:1rem 1.25rem; text-align:center; font-size:0.9rem;">
+    <strong>Web Bluetooth is not available.</strong>
+    <span id="compat-msg"></span>
+  </div>
+
   <main>
     <h1>BLE DFU <span>Firmware updater for nRF devices via Web Bluetooth</span></h1>
 
@@ -182,5 +187,25 @@
   </main>
 
   <script type="module" src="app.js"></script>
+  <script>
+    (function() {
+      const banner = document.getElementById('compat-banner');
+      const msg = document.getElementById('compat-msg');
+      if (!navigator.bluetooth) {
+        banner.style.display = 'block';
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        const isHTTP = window.location.protocol !== 'https:';
+        if (isIOS) {
+          msg.textContent = ' iOS/iPadOS does not support Web Bluetooth in any browser. Use Android or desktop Chrome.';
+        } else if (isHTTP) {
+          msg.innerHTML = ' This page is served over HTTP. Web Bluetooth requires HTTPS or localhost. <a href="' + window.location.href.replace('http:', 'https:') + '" style="color:#fecaca; text-decoration:underline;">Reload over HTTPS</a>.';
+        } else if (navigator.userAgent.includes('Linux')) {
+          msg.innerHTML = ' On Linux Chrome, enable <code>chrome://flags/#enable-web-bluetooth-new-permissions-backend</code>, set it to <strong>Enabled</strong>, and relaunch Chrome.';
+        } else {
+          msg.textContent = ' Use Chrome on Android, Windows, macOS, or Linux.';
+        }
+      }
+    })();
+  </script>
 </body>
 </html>
