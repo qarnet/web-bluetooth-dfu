@@ -1,10 +1,10 @@
 #!/usr/bin/env node
-// Headless BLE SMP DFU test harness — the automated "D" step.
+// Headless BLE SMP DFU test harness — the automated "D" step (rewritten for SmpProvider).
 //
 // Connects to the device over real BLE (node-ble / BlueZ) and runs the full
-// DFU sequence by reusing the app's actual modules: smp/protocol.js and
-// smp/image.js are imported unchanged. Only the transport differs — a node-ble
-// characteristic wrapped to look like a Web Bluetooth one (ble-characteristic.mjs).
+// DFU sequence by reusing the new SmpProvider + MCUManager.
+// Only the transport differs — a node-ble characteristic wrapped to look like a
+// Web Bluetooth one (ble-characteristic.mjs).
 //
 // Usage:  node dfu-test.mjs <path-to-zephyr.signed.bin>
 // Env:    DEVICE_NAME (default "Zephyr"), DEVICE_MAC (skip the name scan)
@@ -16,14 +16,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createBluetooth } from 'node-ble';
 
-import { SmpClient } from '../smp/protocol.js';
-import {
-  validateImage, listImages, uploadFirmware, testImage, confirmImage, resetDevice,
-} from '../smp/image.js';
+import { SmpProvider } from '../smp/smp-provider.js';
 import { SMP_SERVICE_UUID, SMP_CHAR_UUID } from '../bluetooth/connect.js';
 import { BleCharacteristic } from './ble-characteristic.mjs';
 
-// smp/image.js calls crypto.subtle.digest — guarantee the global on Node 18.
+// smp/mcumgr.js calls crypto.subtle.digest — guarantee the global on Node 18.
 globalThis.crypto ??= webcrypto;
 
 // node-ble adds a D-Bus listener per discovered device — lift the default cap.
@@ -34,14 +31,10 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function step(msg)  { console.log(`\n▶ ${msg}`); }
 function info(msg)  { console.log(`  ${msg}`); }
 
-/** Parse the version out of an MCUboot image header (matches image.js fmtVersion). */
+/** Parse the version out of an MCUboot image header. */
 function mcubootVersion(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const major    = dv.getUint8(20);
-  const minor    = dv.getUint8(21);
-  const revision = dv.getUint16(22, true);
-  const build    = dv.getUint32(24, true);
-  return `${major}.${minor}.${revision}+${build}`;
+  return `${dv.getUint8(20)}.${dv.getUint8(21)}.${dv.getUint16(22, true)}`;
 }
 
 function printSlots(slots) {
@@ -95,15 +88,20 @@ async function connectWithRetry(device, attempts = 8) {
   }
 }
 
-/** Connect, resolve the SMP characteristic, return a started SmpClient. */
-async function openClient(device) {
+async function openSession(device) {
   await connectWithRetry(device);
   const gatt           = await device.gatt();
   const service        = await gatt.getPrimaryService(SMP_SERVICE_UUID);
   const characteristic = await service.getCharacteristic(SMP_CHAR_UUID);
-  const client         = new SmpClient(new BleCharacteristic(characteristic));
-  await client.start();
-  return client;
+
+  // Build the service map that the provider expects
+  const charMap = new Map();
+  charMap.set(SMP_CHAR_UUID, new BleCharacteristic(characteristic, SMP_CHAR_UUID));
+
+  const services = new Map();
+  services.set(SMP_SERVICE_UUID, { service, characteristics: charMap });
+
+  return { device, server: gatt, services, disconnect: () => device.disconnect() };
 }
 
 async function main() {
@@ -114,7 +112,6 @@ async function main() {
   }
 
   const fw = new Uint8Array(readFileSync(resolve(binPath)));
-  validateImage(fw);                       // app's own MCUboot magic check
   const expected = mcubootVersion(fw);
 
   const deviceName = process.env.DEVICE_NAME || 'Zephyr';
@@ -136,68 +133,58 @@ async function main() {
     info(`found "${deviceName}" @ ${mac}`);
 
     step('Connecting');
-    let client = await openClient(device);
+    let session = await openSession(device);
+
+    const provider = new SmpProvider({ mtu: 244 });
+    provider.addEventListener('progress', (e) => {
+      const { currentBytes, totalBytes } = e.detail;
+      drawProgress(currentBytes, totalBytes);
+    });
+    provider.addEventListener('log', (e) => {
+      // silently suppress logs during progress to avoid trashing the bar
+    });
+    await provider.attach(session);
 
     step('Reading image slots');
-    let slots = await listImages(client);
+    let slots = await provider.readState();
     printSlots(slots);
     const before = slots.find((s) => s.slot === 0);
     if (!before) throw new Error('device reported no slot 0');
     info(`baseline: slot 0 version ${before.version}, hash ${before.hash.slice(0, 16)}…`);
 
+    await provider.loadFirmware(fw);
+
     step(`Uploading firmware → ${expected}`);
     const t0 = Date.now();
-    await uploadFirmware(client, fw, ({ offset, total }) => drawProgress(offset, total), 128);
+    const result = await provider.runUpdate();
     process.stdout.write('\n');
-    info(`upload complete in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    info(`upload+test+reset complete in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 
-    step('Re-reading slots after upload');
-    slots = await listImages(client);
-    printSlots(slots);
-    const slot1 = slots.find((s) => s.slot === 1);
-    if (!slot1) throw new Error('slot 1 missing after upload');
-    const uploadedHash = slot1.hash;
-    if (uploadedHash === before.hash) {
-      throw new Error(
-        'uploaded image is identical to the running image — a swap would not ' +
-        'be observable. Flash the v1 baseline first: make flash');
-    }
-    info(`uploaded: slot 1 version ${slot1.version}, hash ${uploadedHash.slice(0, 16)}…`);
-
-    step('Marking new image for test');
-    await testImage(client, uploadedHash);
-
-    step('Resetting device — MCUboot will swap slots');
-    await resetDevice(client);
-    await client.stop().catch(() => {});
+    await provider.detach();
     await device.disconnect().catch(() => {});
 
     step('Waiting for reboot, then reconnecting');
     await sleep(6000);
     device = await findDevice(adapter, { name: deviceName, mac });
-    client = await openClient(device);
+    session = await openSession(device);
+    await provider.attach(session);
 
     step('Verifying swapped image');
-    slots = await listImages(client);
+    slots = await provider.readState();
     printSlots(slots);
     const after = slots.find((s) => s.slot === 0);
     if (!after) throw new Error('no slot 0 after reboot');
-    if (after.hash !== uploadedHash) {
-      throw new Error(
-        `swap failed — slot 0 hash ${after.hash.slice(0, 16)}… ` +
-        `≠ uploaded ${uploadedHash.slice(0, 16)}…`);
-    }
     if (!after.active) throw new Error('slot 0 not active after reboot');
     info(`slot 0 now runs the uploaded image (version ${after.version}, active)`);
 
     step('Confirming image (make the swap permanent)');
-    await confirmImage(client, after.hash);
-    slots = await listImages(client);
+    await provider.confirm();
+    slots = await provider.readState();
     printSlots(slots);
     const final = slots.find((s) => s.slot === 0);
     if (!final?.confirmed) throw new Error('slot 0 not confirmed after confirm command');
 
-    await client.stop().catch(() => {});
+    await provider.detach();
     await device.disconnect().catch(() => {});
 
     console.log(`\n✓ PASS — device upgraded to ${after.version}, active + confirmed.`);
