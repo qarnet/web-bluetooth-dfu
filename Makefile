@@ -60,5 +60,20 @@ browser-test-nordic:
 	$(if $(ZIP),, $(error ZIP variable not set. Usage: make browser-test-nordic ZIP=path/to/package.zip))
 	node $(REPO)/tools/nordic-browser-dfu-test.mjs $(ZIP)
 
+browser-test-nordic-headless:
+	$(if $(ZIP),, $(error ZIP variable not set. Usage: make browser-test-nordic-headless ZIP=path/to/package.zip))
+	HEADLESS=1 xvfb-run -a --server-args="-screen 0 1280x900x24" \
+	  node $(REPO)/tools/nordic-browser-dfu-test.mjs $(ZIP)
+
+# Multi-image Nordic browser DFU test
+browser-test-nordic-multi:
+	$(if $(ZIP),, $(error ZIP variable not set. Usage: make browser-test-nordic-multi ZIP=path/to/package.zip))
+	node $(REPO)/tools/nordic-browser-dfu-test.mjs --multi-image $(ZIP)
+
+browser-test-nordic-multi-headless:
+	$(if $(ZIP),, $(error ZIP variable not set. Usage: make browser-test-nordic-multi-headless ZIP=path/to/package.zip))
+	HEADLESS=1 xvfb-run -a --server-args="-screen 0 1280x900x24" \
+	  node $(REPO)/tools/nordic-browser-dfu-test.mjs --multi-image $(ZIP)
+
 clean:
 	rm -rf $(BUILD) $(BUILD2)

@@ -4,12 +4,14 @@
 // Automates Chrome to load the web app, connect to a Nordic Secure DFU device,
 // and run the full DFU flow: init packet transfer → firmware transfer → reboot.
 //
+// Supports both single-image and multi-image DFU packages.
+//
 // Usage:
-//   node nordic-browser-dfu-test.mjs <path-to-package.zip>
+//   node nordic-browser-dfu-test.mjs [--multi-image] <path-to-package.zip>
 //
 // Environment:
 //   APP_URL          — app URL (default https://localhost:8443)
-//   DEVICE_NAME      — advertised BLE name in application mode (default "DfuTarg")
+//   DEVICE_NAME      — advertised BLE name in application mode (default "Nordic_Buttonless")
 //   BOOTLOADER_NAME  — name after buttonless reboot (default "DfuTest")
 //   PUPPETEER_CHROME — path to Chrome binary
 //   HEADLESS         — "1" to run headless
@@ -27,6 +29,10 @@ const BOOTLOADER_NAME = process.env.BOOTLOADER_NAME || 'DfuTest';
 const HEADLESS        = process.env.HEADLESS        === '1';
 const TIMEOUT_MS      = parseInt(process.env.TIMEOUT_MS, 10) || 300_000;
 const CHROME_BIN      = process.env.PUPPETEER_CHROME || undefined;
+
+const args = process.argv.slice(2);
+const MULTI_IMAGE = args.includes('--multi-image');
+const zipArg = args.find((a) => !a.startsWith('--'));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -67,16 +73,46 @@ async function waitForPredicate(page, fn, opts = {}) {
   }
 }
 
+/** Detect whether the UI shows an auto-reconnect succeeded. */
+async function isAutoReconnected(page) {
+  return page.evaluate(() => {
+    const btnReconnect = document.getElementById('btn-reconnect');
+    const btnRowConnected = document.getElementById('btn-row-connected');
+    return (
+      btnReconnect && btnReconnect.style.display === 'none' &&
+      btnRowConnected && btnRowConnected.style.display !== 'none'
+    );
+  });
+}
+
+/** Wait for DFU to complete or a reconnect signal. */
+async function waitForDfuOrReconnect(page, label, timeout = 180_000) {
+  await waitForPredicate(
+    page,
+    () => {
+      const btnDfu = document.getElementById('btn-dfu');
+      const btnReconnect = document.getElementById('btn-reconnect');
+      const btnRowConnected = document.getElementById('btn-row-connected');
+      return (
+        (btnDfu && btnDfu.textContent.includes('Done')) ||
+        (btnReconnect && btnReconnect.style.display !== 'none') ||
+        (btnRowConnected && btnRowConnected.style.display !== 'none')
+      );
+    },
+    { label, timeout },
+  );
+}
+
 /** Main test flow. */
 async function main() {
-  const zipPath = process.argv[2];
-  if (!zipPath) {
-    console.error('usage: node nordic-browser-dfu-test.mjs <path-to-package.zip>');
+  if (!zipArg) {
+    console.error('usage: node nordic-browser-dfu-test.mjs [--multi-image] <path-to-package.zip>');
     process.exit(2);
   }
 
-  const zipSize = readFileSync(resolve(zipPath)).byteLength;
-  info(`ZIP package: ${zipPath} (${(zipSize / 1024).toFixed(1)} KB)`);
+  const zipSize = readFileSync(resolve(zipArg)).byteLength;
+  info(`ZIP package: ${zipArg} (${(zipSize / 1024).toFixed(1)} KB)`);
+  info(`Multi-image: ${MULTI_IMAGE}`);
   info(`App URL:     ${APP_URL}`);
   info(`Device:      "${DEVICE_NAME}" (bootloader: "${BOOTLOADER_NAME}")`);
   info(`Chrome:      ${CHROME_BIN || 'puppeteer bundled'}`);
@@ -92,7 +128,6 @@ async function main() {
     await page.goto(APP_URL, { waitUntil: 'networkidle0', timeout: 15_000 });
     info('page loaded');
 
-    // Give inline compat check script time to run
     await sleep(500);
 
     const bannerVisible = await page.evaluate(() => {
@@ -107,7 +142,7 @@ async function main() {
     // ── 2. Upload package ──────────────────────────────────────────────────────
     step('Uploading DFU package');
     const fileInput = await page.$('#file-input');
-    await fileInput.uploadFile(resolve(zipPath));
+    await fileInput.uploadFile(resolve(zipArg));
 
     await waitForPredicate(
       page,
@@ -119,6 +154,22 @@ async function main() {
     );
     const badgeText = await page.evaluate(() => document.getElementById('protocol-badge').textContent);
     info(`protocol detected: ${badgeText}`);
+
+    // ── 2b. Multi-image checkbox ─────────────────────────────────────────────
+    if (MULTI_IMAGE) {
+      const hasCheckbox = await page.evaluate(() => {
+        const row = document.getElementById('multi-image-row');
+        const cb  = document.getElementById('multi-image-check');
+        return row && row.style.display !== 'none' && cb && !cb.disabled;
+      });
+      if (hasCheckbox) {
+        step('Enabling multi-image update');
+        await page.click('#multi-image-check');
+        info('multi-image checkbox checked');
+      } else {
+        info('package does not contain multi-image — proceeding as single-image');
+      }
+    }
 
     // ── 3. Connect to device ───────────────────────────────────────────────────
     step(`Opening Bluetooth picker and selecting "${DEVICE_NAME}"`);
@@ -145,75 +196,93 @@ async function main() {
     // ── 4. Start DFU update ──────────────────────────────────────────────────
     step('Starting DFU transfer');
     const t0 = Date.now();
-    await page.click('#btn-dfu');
 
-    // Wait until the update either completes or the reconnect button appears
-    // (buttonless flow reboots into bootloader and asks for reconnect)
+    // Click Update Firmware
     await waitForPredicate(
       page,
       () => {
-        const btnDfu = document.getElementById('btn-dfu');
-        const btnReconnect = document.getElementById('btn-reconnect');
-        return (
-          (btnDfu && btnDfu.textContent.includes('Done')) ||
-          (btnReconnect && btnReconnect.style.display !== 'none')
-        );
+        const btn = document.getElementById('btn-dfu');
+        return btn && !btn.disabled;
       },
-      { label: 'transfer completion or reconnect request', timeout: 180_000 },
+      { label: 'Update Firmware button enabled' },
     );
+    await page.click('#btn-dfu');
 
-    const needsReconnect = await page.evaluate(() => {
-      const el = document.getElementById('btn-reconnect');
-      return el && el.style.display !== 'none';
+    // Wait for completion or reconnect
+    await waitForDfuOrReconnect(page, 'transfer completion or reconnect request');
+
+    const isDone = await page.evaluate(() => {
+      const btn = document.getElementById('btn-dfu');
+      return btn && btn.textContent.includes('Done');
     });
 
-    if (needsReconnect) {
-      // Buttonless flow: device rebooted into bootloader
-      step('Device rebooted into bootloader — reconnecting');
-      await sleep(5000);
+    if (!isDone) {
+      const autoReconnected = await isAutoReconnected(page);
+      if (autoReconnected) {
+        info('auto-reconnect succeeded — device is back in bootloader continuation mode');
+      } else {
+        // Manual reconnect needed (buttonless flow into bootloader)
+        const needsReconnect = await page.evaluate(() => {
+          const el = document.getElementById('btn-reconnect');
+          return el && el.style.display !== 'none';
+        });
 
-      const [devicePrompt2] = await Promise.all([
-        page.waitForDevicePrompt({ timeout: 30_000 }),
-        page.click('#btn-reconnect'),
-      ]);
-      info('device chooser appeared for bootloader');
+        if (needsReconnect) {
+          step('Device rebooted into bootloader — reconnecting');
+          await sleep(5000);
 
-      const bootloader = await devicePrompt2.waitForDevice(
-        (d) => d.name === BOOTLOADER_NAME,
-        { timeout: 25_000 },
-      );
-      info(`found bootloader: ${bootloader.name}`);
-      await devicePrompt2.select(bootloader);
+          const [devicePrompt2] = await Promise.all([
+            page.waitForDevicePrompt({ timeout: 30_000 }),
+            page.click('#btn-reconnect'),
+          ]);
+          info('device chooser appeared for bootloader');
 
-      await waitForPredicate(
-        page,
-        () => document.getElementById('btn-row-connected').style.display !== 'none',
-        { label: 'reconnected to bootloader' },
-      );
-      info('connected to bootloader');
+          const bootloader = await devicePrompt2.waitForDevice(
+            (d) => d.name === BOOTLOADER_NAME,
+            { timeout: 25_000 },
+          );
+          info(`found bootloader: ${bootloader.name}`);
+          await devicePrompt2.select(bootloader);
 
-      // Continue transfer — click Update Firmware again to start the actual DFU
-      step('Continuing DFU transfer in bootloader');
+          await waitForPredicate(
+            page,
+            () => document.getElementById('btn-row-connected').style.display !== 'none',
+            { label: 'reconnected to bootloader' },
+          );
+          info('connected to bootloader');
+        }
+      }
 
-      // Wait for button to become enabled (setBusy clears it in the reconnect handler)
-      await waitForPredicate(
-        page,
-        () => {
-          const btn = document.getElementById('btn-dfu');
-          return btn && !btn.disabled;
-        },
-        { label: 'Update Firmware button enabled' },
-      );
-      await page.click('#btn-dfu');
+      // For multi-image: after base transfer + reboot, we need to click Update again
+      // for the app image. For single-image with buttonless, the transfer may have
+      // already started automatically after reconnect.
+      const stillNeedsClick = await page.evaluate(() => {
+        const btn = document.getElementById('btn-dfu');
+        return btn && !btn.disabled && !btn.textContent.includes('Done');
+      });
 
-      await waitForPredicate(
-        page,
-        () => {
-          const btnDfu = document.getElementById('btn-dfu');
-          return btnDfu && btnDfu.textContent.includes('Done');
-        },
-        { label: 'transfer complete after bootloader reconnect', timeout: 180_000 },
-      );
+      if (stillNeedsClick) {
+        step('Continuing DFU transfer');
+        await page.click('#btn-dfu');
+      }
+
+      // Wait for final completion
+      await waitForDfuOrReconnect(page, 'final transfer completion', 180_000);
+
+      const finalDone = await page.evaluate(() => {
+        const btn = document.getElementById('btn-dfu');
+        return btn && btn.textContent.includes('Done');
+      });
+
+      if (!finalDone) {
+        // Multi-image step 1 produced another reconnect — wait for auto-reconnect
+        const autoReconnected2 = await isAutoReconnected(page);
+        if (autoReconnected2) {
+          info('auto-reconnect succeeded after second transfer');
+        } else {
+          throw new Error('Transfer did not complete — unexpected state after reboot');
+        }
+      }
     }
 
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
