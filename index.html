@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Web SMP DFU</title>
+  <title>BLE DFU</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -83,7 +83,12 @@
       padding: 0.2rem 0.4rem; color: #e2e8f0; font: inherit; font-size: 0.8rem;
     }
 
-    .btn-row { display: flex; gap: 0.5rem; }
+    .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+
+    .protocol-badge {
+      font-size: 0.65rem; padding: 0.15rem 0.5rem; border-radius: 4px;
+      background: #1e3a5f; color: #93c5fd; font-weight: 600; display: none;
+    }
 
     .slots { display: flex; flex-direction: column; gap: 0.4rem; }
     .slot {
@@ -113,6 +118,7 @@
     .log-entries { display: flex; flex-direction: column; gap: 0.15rem; max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 0.78rem; }
     .log-info  { color: #64748b; }
     .log-ok    { color: #4ade80; }
+    .log-warn  { color: #fbbf24; }
     .log-error { color: #f87171; }
     .log-ts    { color: #374151; margin-right: 0.4rem; }
 
@@ -121,16 +127,17 @@
 </head>
 <body>
   <main>
-    <h1>Web SMP DFU <span>Firmware updater for nRF Connect SDK devices via BLE SMP / mcumgr</span></h1>
+    <h1>BLE DFU <span>Firmware updater for nRF devices via Web Bluetooth</span></h1>
 
     <section id="sec-firmware">
       <h2>Firmware</h2>
       <div class="file-row">
         <label class="file-label" id="file-label">
-          Choose .bin file
-          <input type="file" id="file-input" accept=".bin" style="display:none" />
+          Choose file
+          <input type="file" id="file-input" accept=".bin,.zip" style="display:none" />
         </label>
         <span class="file-name" id="file-name"></span>
+        <span class="protocol-badge" id="protocol-badge"></span>
       </div>
       <div class="chunk-row" id="chunk-row" style="display:none">
         <span id="file-size"></span>
@@ -148,12 +155,18 @@
         <button class="btn-secondary" id="btn-refresh">Refresh slots</button>
         <button class="btn-danger" id="btn-disconnect">Disconnect</button>
       </div>
-      <div class="slots" id="slots"></div>
+      <div class="btn-row">
+        <button class="btn-primary" id="btn-reconnect" style="display:none">Reconnect</button>
+      </div>
+      <section id="sec-slots">
+        <div class="slots" id="slots"></div>
+      </section>
     </section>
 
     <section id="sec-update">
       <h2>Update</h2>
-      <button class="btn-green" id="btn-dfu" disabled>Flash Firmware</button>
+      <button class="btn-green" id="btn-dfu" disabled>Update Firmware</button>
+      <button class="btn-green" id="btn-confirm" style="display:none" disabled>Confirm Update</button>
       <div class="progress-wrap" id="progress-wrap" style="display:none">
         <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>
         <div class="progress-text" id="progress-text"></div>
@@ -165,7 +178,7 @@
       <div class="log-entries" id="log-entries"></div>
     </section>
 
-    <footer>Chrome desktop / Android only &middot; HTTPS required &middot; nRF Connect SDK + MCUboot</footer>
+    <footer>Chrome / Edge desktop + Android only · HTTPS required · Supports SMP/MCUboot and Nordic Secure DFU</footer>
   </main>
 
   <script type="module" src="app.js"></script>

@@ -1,6 +1,12 @@
 import { connectToDevice } from './bluetooth/connect.js';
-import { SmpClient } from './smp/protocol.js';
-import { validateImage, listImages, uploadFirmware, testImage, resetDevice } from './smp/image.js';
+import { SmpProvider } from './smp/smp-provider.js';
+import { NordicProvider } from './nordic/nordic-provider.js';
+import { detectFromFile, detectFromDevice, resolveProtocol } from './core/detect.js';
+
+const PROVIDERS = {
+  smp: SmpProvider,
+  nordic: NordicProvider,
+};
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -10,6 +16,7 @@ const fileNameEl      = document.getElementById('file-name');
 const fileSizeEl      = document.getElementById('file-size');
 const chunkRow        = document.getElementById('chunk-row');
 const chunkSizeInput  = document.getElementById('chunk-size');
+const protocolBadge   = document.getElementById('protocol-badge');
 const btnConnect      = document.getElementById('btn-connect');
 const btnRowConnect   = document.getElementById('btn-row-connect');
 const btnRowConnected = document.getElementById('btn-row-connected');
@@ -17,6 +24,8 @@ const btnRefresh      = document.getElementById('btn-refresh');
 const btnDisconnect   = document.getElementById('btn-disconnect');
 const slotsEl         = document.getElementById('slots');
 const btnDfu          = document.getElementById('btn-dfu');
+const btnConfirm      = document.getElementById('btn-confirm');
+const btnReconnect    = document.getElementById('btn-reconnect');
 const progressWrap    = document.getElementById('progress-wrap');
 const progressFill    = document.getElementById('progress-fill');
 const progressText    = document.getElementById('progress-text');
@@ -25,9 +34,10 @@ const logEntries      = document.getElementById('log-entries');
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-let firmware   = null;   // Uint8Array
-let connection = null;   // { device, server, characteristic, disconnect }
-let client     = null;   // SmpClient
+let firmware   = null;
+let fileSig    = null;   // 'smp' | 'nordic' | null
+let connection = null;   // { device, server, services, disconnect }
+let provider   = null;   // DfuProvider instance
 let busy       = false;
 
 // ── Logging ───────────────────────────────────────────────────────────────────
@@ -40,6 +50,7 @@ function log(text, level = 'info') {
   el.innerHTML = `<span class="log-ts">${ts}</span>${text}`;
   logEntries.appendChild(el);
   logEntries.scrollTop = logEntries.scrollHeight;
+  console.log(`[${level.toUpperCase()}] ${text}`);
 }
 
 // ── UI helpers ─────────────────────────────────────────────────────────────────
@@ -56,7 +67,12 @@ function setBusy(state) {
 }
 
 function updateDfuButton() {
-  btnDfu.disabled = busy || !firmware || !client;
+  btnDfu.disabled = busy || !firmware || !provider;
+}
+
+function updateConfirmButton(enabled) {
+  btnConfirm.style.display = enabled ? '' : 'none';
+  btnConfirm.disabled = busy || !enabled;
 }
 
 function showConnected(isConnected) {
@@ -64,15 +80,49 @@ function showConnected(isConnected) {
   btnRowConnected.style.display = isConnected ? '' : 'none';
 }
 
+function setProgress(offset, total) {
+  progressWrap.style.display = '';
+  const pct = total ? Math.round((offset / total) * 100) : 0;
+  progressFill.style.width = `${pct}%`;
+  progressText.textContent  = `${(offset / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)} KB`;
+}
+
+function setPhase(label) {
+  btnDfu.textContent = label;
+}
+
+function showProtocol(providerId) {
+  const p = providerId === 'smp' ? 'SMP / MCUboot' : providerId === 'nordic' ? 'Nordic Secure DFU' : '';
+  protocolBadge.textContent = p;
+  protocolBadge.style.display = p ? '' : 'none';
+}
+
+function configureUi(capabilities) {
+  if (capabilities.hasSlots) {
+    document.getElementById('sec-slots').style.display = '';
+  } else {
+    document.getElementById('sec-slots').style.display = 'none';
+  }
+  updateConfirmButton(false);
+  if (capabilities.chunkConfigurable) {
+    chunkRow.style.display = '';
+  } else {
+    chunkRow.style.display = 'none';
+  }
+}
+
 function renderSlots(slots) {
   slotsEl.innerHTML = '';
+  if (!slots || !slots.length) {
+    slotsEl.innerHTML = '<div class="slot"><em>No slot information available</em></div>';
+    return;
+  }
   for (const s of slots) {
     const badges = [
       s.active    ? '<span class="badge badge-green">active</span>'    : '',
       s.pending   ? '<span class="badge badge-yellow">pending</span>'  : '',
       s.confirmed ? '<span class="badge badge-blue">confirmed</span>'  : '',
     ].join('');
-
     const el = document.createElement('div');
     el.className = 'slot';
     el.innerHTML = `
@@ -86,37 +136,44 @@ function renderSlots(slots) {
   }
 }
 
-function setProgress(offset, total) {
-  progressWrap.style.display = '';
-  const pct = total ? Math.round((offset / total) * 100) : 0;
-  progressFill.style.width = `${pct}%`;
-  progressText.textContent  = `${(offset / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)} KB`;
+function checkPending(slots) {
+  const s0 = slots.find((s) => s.slot === 0);
+  if (s0 && s0.active && s0.pending && !s0.confirmed) {
+    log('New image is active but pending — if the device reboots now it will revert. Click "Confirm" to make it permanent.', 'warn');
+    updateConfirmButton(true);
+  } else {
+    updateConfirmButton(false);
+  }
 }
 
 // ── File picker ────────────────────────────────────────────────────────────────
 
-fileInput.addEventListener('change', () => {
+fileInput.addEventListener('change', async () => {
   const file = fileInput.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const data = new Uint8Array(reader.result);
-    try {
-      validateImage(data);
-      firmware = data;
-      fileNameEl.textContent = file.name;
-      fileSizeEl.textContent = `${(data.byteLength / 1024).toFixed(1)} KB`;
-      chunkRow.style.display = '';
-      log(`Loaded ${file.name} (${(data.byteLength / 1024).toFixed(1)} KB)`, 'ok');
-    } catch (err) {
-      log(err.message, 'error');
-      firmware = null;
-      fileNameEl.textContent = '';
-      chunkRow.style.display = 'none';
-    }
-    updateDfuButton();
-  };
-  reader.readAsArrayBuffer(file);
+
+  try {
+    const data = new Uint8Array(await file.arrayBuffer());
+    fileSig = detectFromFile(data);
+    if (fileSig) showProtocol(fileSig);
+
+    // Pre-load into whatever provider will be used
+    let targetProvider = PROVIDERS[fileSig];
+    if (!targetProvider) targetProvider = SmpProvider; // default guess
+
+    firmware = { data, file };
+    fileNameEl.textContent = file.name;
+    fileSizeEl.textContent = `${(data.byteLength / 1024).toFixed(1)} KB`;
+    chunkRow.style.display = '';
+    log(`Loaded ${file.name} (${(data.byteLength / 1024).toFixed(1)} KB)`, 'ok');
+  } catch (err) {
+    log(err.message, 'error');
+    firmware = null;
+    fileSig = null;
+    fileNameEl.textContent = '';
+    showProtocol(null);
+  }
+  updateDfuButton();
 });
 
 // ── Connect ────────────────────────────────────────────────────────────────────
@@ -128,16 +185,40 @@ btnConnect.addEventListener('click', async () => {
     connection = await connectToDevice(onDeviceDisconnect);
     log(`Connected to "${connection.device.name ?? 'Unknown'}"`, 'ok');
 
-    client = new SmpClient(connection.characteristic);
-    await client.start();
+    const deviceSig = detectFromDevice(connection.services);
+    const proto = resolveProtocol(fileSig, deviceSig);
 
+    const ProviderClass = PROVIDERS[proto];
+    if (!ProviderClass) throw new Error(`Unknown protocol: ${proto}`);
+
+    showProtocol(proto);
+    provider = new ProviderClass({ mtu: parseInt(chunkSizeInput.value, 10) || 128 });
+    configureUi(ProviderClass.capabilities);
+
+    provider.addEventListener('log', (e) => log(e.detail.message, e.detail.level));
+    provider.addEventListener('progress', (e) => {
+      const { currentBytes, totalBytes } = e.detail;
+      setProgress(currentBytes, totalBytes);
+    });
+    provider.addEventListener('phase', (e) => setPhase(e.detail.label));
+    provider.addEventListener('needs-reconnect', () => {
+      log('Device rebooted. Please click Reconnect when it advertises again.', 'warn');
+      showConnected(false);
+      if (provider) provider.detach().catch(() => {});
+      connection = null;
+      btnReconnect.style.display = '';
+      btnReconnect.disabled = false;
+      updateDfuButton();
+    });
+
+    await provider.attach(connection);
     showConnected(true);
     await refreshSlots();
   } catch (err) {
     log(err.message, 'error');
-    connection = null;
-    client = null;
     showConnected(false);
+    connection = null;
+    provider = null;
   } finally {
     btnConnect.textContent = 'Scan & Connect';
     setBusy(false);
@@ -146,10 +227,11 @@ btnConnect.addEventListener('click', async () => {
 
 function onDeviceDisconnect() {
   log('Device disconnected', 'error');
-  connection = null;
-  client = null;
   showConnected(false);
+  connection = null;
+  provider = null;
   updateDfuButton();
+  updateConfirmButton(false);
   progressWrap.style.display = 'none';
 }
 
@@ -158,10 +240,12 @@ function onDeviceDisconnect() {
 btnDisconnect.addEventListener('click', () => {
   connection?.disconnect();
   connection = null;
-  client = null;
+  provider?.detach().catch(() => {});
+  provider = null;
   showConnected(false);
   slotsEl.innerHTML = '';
   updateDfuButton();
+  updateConfirmButton(false);
   log('Disconnected');
 });
 
@@ -173,54 +257,110 @@ btnRefresh.addEventListener('click', async () => {
 });
 
 async function refreshSlots() {
+  if (!provider) return;
   log('Listing images…');
-  const slots = await listImages(client);
+  const slots = await provider.readState();
   renderSlots(slots);
+  if (slots.length) checkPending(slots);
   log(`Found ${slots.length} image slot(s)`, 'ok');
-  return slots;
 }
 
 // ── DFU ────────────────────────────────────────────────────────────────────────
 
 btnDfu.addEventListener('click', async () => {
-  if (!firmware || !client) return;
-  const chunkSize = parseInt(chunkSizeInput.value, 10) || 128;
+  if (!firmware || !provider) return;
 
   setBusy(true);
-  btnDfu.textContent = 'Uploading…';
+  btnDfu.textContent = 'Updating…';
   progressWrap.style.display = '';
-  setProgress(0, firmware.byteLength);
+  setProgress(0, firmware.data.byteLength);
 
   try {
-    log(`Uploading firmware (${(firmware.byteLength / 1024).toFixed(1)} KB, chunk=${chunkSize}B)…`);
-    await uploadFirmware(client, firmware, ({ offset, total }) => {
-      setProgress(offset, total);
-      btnDfu.textContent = `Uploading… ${Math.round((offset / total) * 100)}%`;
-    }, chunkSize);
-    log('Upload complete', 'ok');
+    await provider.loadFirmware(firmware.data);
+    const result = await provider.runUpdate();
 
-    log('Refreshing image list…');
-    const slots = await listImages(client);
-    renderSlots(slots);
-
-    const slot1 = slots.find((s) => s.slot === 1);
-    if (!slot1) throw new Error('Slot 1 not found after upload');
-
-    btnDfu.textContent = 'Marking for test…';
-    log(`Marking image for test (${slot1.hash.slice(0, 12)}…)…`);
-    await testImage(client, slot1.hash);
-    log('Image marked for test', 'ok');
-
-    btnDfu.textContent = 'Resetting…';
-    log('Resetting device — will swap and boot new firmware…');
-    await resetDevice(client);
-    log('Reset sent. Reconnect after boot to verify.', 'ok');
-    btnDfu.textContent = 'Done ✓';
+    if (result?.needsConfirm) {
+      // SMP flow: reset happened, need reconnect + confirm
+      // UI already handled by 'needs-reconnect' event
+    } else {
+      log('Update complete', 'ok');
+      btnDfu.textContent = 'Done ✓';
+    }
   } catch (err) {
     log(err.message, 'error');
-    btnDfu.textContent = 'Flash Firmware';
+    btnDfu.textContent = 'Update Firmware';
+  } finally {
+    setProgress(0, 0);
+    setBusy(false);
+    updateDfuButton();
+  }
+});
+
+// ── Confirm (SMP only, reconnect after reset) ──────────────────────────────────
+
+btnConfirm.addEventListener('click', async () => {
+  if (!provider) return;
+  setBusy(true);
+  btnConfirm.textContent = 'Confirming…';
+  try {
+    log('Confirming image to make swap permanent…');
+    await provider.confirm();
+
+    const slots = await provider.readState();
+    renderSlots(slots);
+    checkPending(slots);
+    if (slots.find((s) => s.slot === 0)?.confirmed) {
+      log('Slot 0 is now active + confirmed — DFU is complete.', 'ok');
+      btnConfirm.textContent = 'Confirmed ✓';
+    } else {
+      log('Slot 0 is still not confirmed after confirm command.', 'warn');
+      btnConfirm.textContent = 'Confirm Update';
+    }
+  } catch (err) {
+    log(err.message, 'error');
   } finally {
     setBusy(false);
     updateDfuButton();
   }
 });
+
+// ── Reconnect (Nordic buttonless or SMP reset) ───────────────────────────────
+
+btnReconnect.addEventListener('click', async () => {
+  btnReconnect.disabled = true;
+  btnReconnect.textContent = 'Reconnecting…';
+  try {
+    connection = await connectToDevice(onDeviceDisconnect);
+    const deviceSig = detectFromDevice(connection.services);
+    const proto = resolveProtocol(fileSig, deviceSig);
+    const ProviderClass = PROVIDERS[proto];
+    provider = new ProviderClass({ mtu: parseInt(chunkSizeInput.value, 10) || 128 });
+    showProtocol(proto);
+    configureUi(ProviderClass.capabilities);
+
+    provider.addEventListener('log', (e) => log(e.detail.message, e.detail.level));
+    provider.addEventListener('progress', (e) => setProgress(e.detail.currentBytes, e.detail.totalBytes));
+    provider.addEventListener('phase', (e) => setPhase(e.detail.label));
+    provider.addEventListener('needs-reconnect', () => {
+      log('Device rebooted again. Please reconnect.', 'warn');
+      showConnected(false);
+      btnReconnect.style.display = '';
+      btnReconnect.disabled = false;
+    });
+
+    await provider.attach(connection);
+    showConnected(true);
+    await refreshSlots();
+    btnReconnect.style.display = 'none';
+    btnReconnect.textContent = 'Reconnect';
+  } catch (err) {
+    log(err.message, 'error');
+    btnReconnect.disabled = false;
+  } finally {
+    setBusy(false);
+  }
+});
+
+// ── Initial state ──────────────────────────────────────────────────────────────
+
+btnReconnect.style.display = 'none';
