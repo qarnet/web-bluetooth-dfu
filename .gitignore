@@ -34,3 +34,7 @@ firmware/.cache
 **/*.hex
 **/*.map
 **/*.pickle
+
+# Auto-generated HTTPS certificates
+.localhost.pem
+.localhost-key.pem
