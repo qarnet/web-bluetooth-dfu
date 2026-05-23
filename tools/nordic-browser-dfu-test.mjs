@@ -22,7 +22,7 @@ import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 
 const APP_URL         = process.env.APP_URL         || 'https://localhost:8443';
-const DEVICE_NAME     = process.env.DEVICE_NAME     || 'DfuTarg';
+const DEVICE_NAME     = process.env.DEVICE_NAME     || 'Nordic_Buttonless';
 const BOOTLOADER_NAME = process.env.BOOTLOADER_NAME || 'DfuTest';
 const HEADLESS        = process.env.HEADLESS        === '1';
 const TIMEOUT_MS      = parseInt(process.env.TIMEOUT_MS, 10) || 300_000;
@@ -38,7 +38,8 @@ function fail(msg)  { console.error(`\n✗ ${msg}`); }
 /** Launch Chrome with the right flags for Web Bluetooth. */
 async function launchBrowser() {
   const args = [
-    '--enable-features=WebBluetooth',
+    '--enable-features=WebBluetooth,WebBluetoothNewPermissionsBackend',
+    '--ignore-certificate-errors',
     '--no-first-run',
     '--disable-default-apps',
     '--disable-popup-blocking',
@@ -91,9 +92,12 @@ async function main() {
     await page.goto(APP_URL, { waitUntil: 'networkidle0', timeout: 15_000 });
     info('page loaded');
 
+    // Give inline compat check script time to run
+    await sleep(500);
+
     const bannerVisible = await page.evaluate(() => {
       const b = document.getElementById('compat-banner');
-      return b && b.style.display !== 'none';
+      return !!b && getComputedStyle(b).display !== 'none';
     });
     if (bannerVisible) {
       const msg = await page.evaluate(() => document.getElementById('compat-msg')?.textContent || '');
@@ -102,7 +106,8 @@ async function main() {
 
     // ── 2. Upload package ──────────────────────────────────────────────────────
     step('Uploading DFU package');
-    await page.setInputFiles('#file-input', resolve(zipPath));
+    const fileInput = await page.$('#file-input');
+    await fileInput.uploadFile(resolve(zipPath));
 
     await waitForPredicate(
       page,
@@ -187,7 +192,20 @@ async function main() {
       );
       info('connected to bootloader');
 
-      // Continue transfer
+      // Continue transfer — click Update Firmware again to start the actual DFU
+      step('Continuing DFU transfer in bootloader');
+
+      // Wait for button to become enabled (setBusy clears it in the reconnect handler)
+      await waitForPredicate(
+        page,
+        () => {
+          const btn = document.getElementById('btn-dfu');
+          return btn && !btn.disabled;
+        },
+        { label: 'Update Firmware button enabled' },
+      );
+      await page.click('#btn-dfu');
+
       await waitForPredicate(
         page,
         () => {

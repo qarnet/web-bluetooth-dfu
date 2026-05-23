@@ -23,6 +23,8 @@ export async function connectToDevice(onDisconnect) {
     { services: [ REGISTRY.smp.serviceUuid ] },
     { services: [ REGISTRY.nordic.serviceUuid ] },
     { namePrefix: REGISTRY.nordic.namePrefix },
+    { namePrefix: 'Nordic_Buttonless' },
+    { namePrefix: 'DfuTest' },
   ];
 
   const device = await navigator.bluetooth.requestDevice({
@@ -30,7 +32,20 @@ export async function connectToDevice(onDisconnect) {
     optionalServices: ALL_OPTIONAL_SERVICES,
   });
 
-  const server = await device.gatt.connect();
+  // Retry gatt.connect() a few times — the device may still be booting its
+  // BLE stack after a firmware reset, which causes transient "Connection
+  // attempt failed" errors on the first try.
+  let server;
+  const maxRetries = 3;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      server = await device.gatt.connect();
+      break;
+    } catch (err) {
+      if (attempt === maxRetries) throw err;
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
 
   // Guard against legacy DFU (blocked by Chrome anyway, but gives a better message)
   const services = await server.getPrimaryServices();

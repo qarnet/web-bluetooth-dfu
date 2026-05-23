@@ -354,6 +354,19 @@ btnReconnect.addEventListener('click', async () => {
 
     await provider.attach(connection);
     showConnected(true);
+
+    // Re-load firmware into the new provider instance (buttonless DFU reconnect
+    // creates a fresh provider; the package must be re-loaded so Update Firmware
+    // works without requiring the user to pick the file again).
+    if (firmware) {
+      try {
+        await provider.loadFirmware(firmware.data);
+        updateDfuButton();
+      } catch (err) {
+        log(err.message, 'error');
+      }
+    }
+
     await refreshSlots();
     btnReconnect.style.display = 'none';
     btnReconnect.textContent = 'Reconnect';
