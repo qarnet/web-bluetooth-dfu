@@ -53,7 +53,8 @@ function mcubootVersion(bytes) {
 /** Launch Chrome with the right flags for Web Bluetooth. */
 async function launchBrowser() {
   const args = [
-    '--enable-features=WebBluetooth',
+    '--enable-features=WebBluetooth,WebBluetoothNewPermissionsBackend',
+    '--ignore-certificate-errors',
     // Disable first-run UI, password saving, etc. to keep the test clean.
     '--no-first-run',
     '--disable-default-apps',
@@ -63,9 +64,8 @@ async function launchBrowser() {
     '--disable-blink-features=AutomationControlled',
   ];
 
-  // On Linux, the new permissions backend must be enabled for Web Bluetooth.
-  // If the user has not set the flag globally, we can't force it per-launch,
-  // but we print a reminder on failure.
+  // On Linux, Web Bluetooth requires the new permissions backend feature flag,
+  // passed above via --enable-features=WebBluetoothNewPermissionsBackend.
 
   return puppeteer.launch({
     headless: HEADLESS ? 'new' : false,
@@ -134,7 +134,7 @@ async function main() {
     // Check for Web Bluetooth availability banner (if shown, the test can't proceed)
     const bannerVisible = await page.evaluate(() => {
       const b = document.getElementById('compat-banner');
-      return b && b.style.display !== 'none';
+      return !!b && getComputedStyle(b).display !== 'none';
     });
     if (bannerVisible) {
       const msg = await page.evaluate(() => document.getElementById('compat-msg')?.textContent || '');
@@ -143,7 +143,8 @@ async function main() {
 
     // ── 2. Upload firmware file ──────────────────────────────────────────────
     step('Uploading firmware file');
-    await page.setInputFiles('#file-input', resolve(binPath));
+    const fileInput = await page.$('#file-input');
+    await fileInput.uploadFile(resolve(binPath));
 
     // Wait for protocol badge to appear (file parsed)
     await waitForPredicate(
