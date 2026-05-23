@@ -1,12 +1,5 @@
-import { connectToDevice } from './bluetooth/connect.js';
-import { SmpProvider } from './smp/smp-provider.js';
-import { NordicProvider } from './nordic/nordic-provider.js';
-import { detectFromFile, detectFromDevice, resolveProtocol } from './core/detect.js';
-
-const PROVIDERS = {
-  smp: SmpProvider,
-  nordic: NordicProvider,
-};
+import { controller } from './app-controller.js';
+import { loadFilterConfig, saveFilterConfig, isValidUuid, normalizeUuid } from './core/filter-store.js';
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -32,28 +25,109 @@ const progressText    = document.getElementById('progress-text');
 const secLog          = document.getElementById('sec-log');
 const logEntries      = document.getElementById('log-entries');
 
-// ── State ─────────────────────────────────────────────────────────────────────
+// Filter UI refs (created in index.html)
+const filterToggle    = document.getElementById('filter-toggle');
+const filterPanel     = document.getElementById('filter-panel');
+const scanAllCheck    = document.getElementById('scan-all');
+const namePrefixInput = document.getElementById('name-prefix');
+const serviceUuidInput= document.getElementById('service-uuid');
 
-let firmware   = null;
-let fileSig    = null;   // 'smp' | 'nordic' | null
-let connection = null;   // { device, server, services, disconnect }
-let provider   = null;   // DfuProvider instance
-let busy       = false;
+// ── State ────────────────────────────────────────────────────────────────────
 
-// ── Logging ───────────────────────────────────────────────────────────────────
+let busy = false;
+let scanTimeoutId = null;
+
+// ── Controller event wiring ──────────────────────────────────────────────────
+
+controller.addEventListener('firmware-loaded', (e) => {
+  const { name, size, protocol } = e.detail;
+  fileNameEl.textContent = name;
+  fileSizeEl.textContent = `${(size / 1024).toFixed(1)} KB`;
+  chunkRow.style.display = '';
+  showProtocol(protocol);
+  log(`Loaded ${name} (${(size / 1024).toFixed(1)} KB)`, 'ok');
+  updateDfuButton();
+});
+
+controller.addEventListener('firmware-unloaded', () => {
+  fileNameEl.textContent = '';
+  fileSizeEl.textContent = '';
+  chunkRow.style.display = 'none';
+  showProtocol(null);
+  updateDfuButton();
+});
+
+controller.addEventListener('connected', (e) => {
+  const { deviceName, protocol, capabilities } = e.detail;
+  log(`Connected to "${deviceName}"`, 'ok');
+  showProtocol(protocol);
+  configureUi(capabilities);
+  showConnected(true);
+  clearScanTimeout();
+  // For SMP: immediately read slots so checkPending() runs and the confirm
+  // button appears when a post-reboot image is active but unconfirmed.
+  if (capabilities.hasSlots) {
+    controller.refreshSlots().catch((err) => log(err.message, 'error'));
+  }
+});
+
+controller.addEventListener('disconnected', (e) => {
+  const { reason } = e.detail;
+  if (reason === 'device') log('Device disconnected', 'error');
+  showConnected(false);
+  slotsEl.innerHTML = '';
+  updateDfuButton();
+  updateConfirmButton(false);
+  progressWrap.style.display = 'none';
+});
+
+controller.addEventListener('log', (e) => log(e.detail.message, e.detail.level));
+
+controller.addEventListener('progress', (e) => {
+  const { currentBytes, totalBytes } = e.detail;
+  setProgress(currentBytes, totalBytes);
+});
+
+controller.addEventListener('phase', (e) => setPhase(e.detail.label));
+
+controller.addEventListener('needs-reconnect', () => {
+  log('Device rebooted. Please click Reconnect when it advertises again.', 'warn');
+  showConnected(false);
+  btnReconnect.style.display = '';
+  btnReconnect.disabled = false;
+  updateDfuButton();
+});
+
+controller.addEventListener('slots-updated', (e) => {
+  const { slots } = e.detail;
+  renderSlots(slots);
+  if (slots.length) checkPending(slots);
+  log(`Found ${slots.length} image slot(s)`, 'ok');
+});
+
+controller.addEventListener('update-complete', () => {
+  log('Update complete', 'ok');
+  btnDfu.textContent = 'Done ✓';
+});
+
+controller.addEventListener('error', (e) => {
+  log(e.detail.message, 'error');
+});
+
+// ── Logging ─────────────────────────────────────────────────────────────────
 
 function log(text, level = 'info') {
   secLog.style.display = '';
   const ts = new Date().toLocaleTimeString();
   const el = document.createElement('div');
   el.className = `log-${level}`;
-  el.innerHTML = `<span class="log-ts">${ts}</span>${text}`;
+  el.innerHTML = `\u003cspan class="log-ts"\u003e${ts}\u003c/span\u003e${text}`;
   logEntries.appendChild(el);
   logEntries.scrollTop = logEntries.scrollHeight;
   console.log(`[${level.toUpperCase()}] ${text}`);
 }
 
-// ── UI helpers ─────────────────────────────────────────────────────────────────
+// ── UI helpers ────────────────────────────────────────────────────────────────
 
 function setBusy(state) {
   busy = state;
@@ -67,7 +141,7 @@ function setBusy(state) {
 }
 
 function updateDfuButton() {
-  btnDfu.disabled = busy || !firmware || !provider;
+  btnDfu.disabled = busy || !controller.hasFirmware || !controller.hasProvider;
 }
 
 function updateConfirmButton(enabled) {
@@ -114,34 +188,30 @@ function configureUi(capabilities) {
 function renderSlots(slots) {
   slotsEl.innerHTML = '';
   if (!slots || !slots.length) {
-    slotsEl.innerHTML = '<div class="slot"><em>No slot information available</em></div>';
+    slotsEl.innerHTML = '\u003cdiv class="slot"\u003e\u003cem\u003eNo slot information available\u003c/em\u003e\u003c/div\u003e';
     return;
   }
   for (const s of slots) {
     const badges = [
-      s.active    ? '<span class="badge badge-green">active</span>'    : '',
-      s.pending   ? '<span class="badge badge-yellow">pending</span>'  : '',
-      s.confirmed ? '<span class="badge badge-blue">confirmed</span>'  : '',
+      s.active    ? '\u003cspan class="badge badge-green"\u003eactive\u003c/span\u003e'    : '',
+      s.pending   ? '\u003cspan class="badge badge-yellow"\u003epending\u003c/span\u003e'  : '',
+      s.confirmed ? '\u003cspan class="badge badge-blue"\u003econfirmed\u003c/span\u003e'  : '',
     ].join('');
     const el = document.createElement('div');
     el.className = 'slot';
     el.innerHTML = `
-      <div class="slot-top">
-        <span class="slot-label">Slot ${s.slot}</span>
-        <span class="slot-version">${s.version}</span>
-        <div class="badges">${badges}</div>
-      </div>
-      <div class="slot-hash">${s.hash}</div>`;
+      \u003cdiv class="slot-top"\u003e
+        \u003cspan class="slot-label"\u003eSlot ${s.slot}\u003c/span\u003e
+        \u003cspan class="slot-version"\u003e${s.version}\u003c/span\u003e
+        \u003cdiv class="badges"\u003e${badges}\u003c/div\u003e
+      \u003c/div\u003e
+      \u003cdiv class="slot-hash"\u003e${s.hash}\u003c/div\u003e`;
     slotsEl.appendChild(el);
   }
 }
 
 function checkPending(slots) {
   const s0 = slots.find((s) => s.slot === 0);
-  // After a test-mode swap, MCUboot reports the new primary image as
-  // active=true, confirmed=false (the `pending` trailer flag lived on the
-  // secondary slot pre-swap and is cleared once the swap completes).
-  // Treat any active-but-unconfirmed image as awaiting confirmation.
   if (s0 && s0.active && !s0.confirmed) {
     log('New image is active but not yet confirmed — if the device reboots now it will revert. Click "Confirm" to make it permanent.', 'warn');
     updateConfirmButton(true);
@@ -150,146 +220,131 @@ function checkPending(slots) {
   }
 }
 
-// ── File picker ────────────────────────────────────────────────────────────────
+// ── File picker ──────────────────────────────────────────────────────────────
 
 fileInput.addEventListener('change', async () => {
   const file = fileInput.files[0];
   if (!file) return;
 
   try {
-    const data = new Uint8Array(await file.arrayBuffer());
-    fileSig = detectFromFile(data);
-    if (fileSig) showProtocol(fileSig);
-
-    // Pre-load into whatever provider will be used
-    let targetProvider = PROVIDERS[fileSig];
-    if (!targetProvider) targetProvider = SmpProvider; // default guess
-
-    firmware = { data, file };
-    fileNameEl.textContent = file.name;
-    fileSizeEl.textContent = `${(data.byteLength / 1024).toFixed(1)} KB`;
-    chunkRow.style.display = '';
-    log(`Loaded ${file.name} (${(data.byteLength / 1024).toFixed(1)} KB)`, 'ok');
+    await controller.loadFirmware(file);
   } catch (err) {
     log(err.message, 'error');
-    firmware = null;
-    fileSig = null;
-    fileNameEl.textContent = '';
-    showProtocol(null);
+    controller.unloadFirmware();
   }
-  updateDfuButton();
 });
 
-// ── Connect ────────────────────────────────────────────────────────────────────
+// ── Filter UI ────────────────────────────────────────────────────────────────
+
+function restoreFilters() {
+  const cfg = loadFilterConfig();
+  scanAllCheck.checked = cfg.scanAll;
+  namePrefixInput.value = cfg.namePrefix;
+  serviceUuidInput.value = cfg.serviceUuid;
+  updateFilterPanelVisibility();
+}
+
+function getFilterConfig() {
+  return {
+    scanAll: scanAllCheck.checked,
+    namePrefix: namePrefixInput.value.trim(),
+    serviceUuid: normalizeUuid(serviceUuidInput.value.trim()),
+  };
+}
+
+function saveCurrentFilters() {
+  saveFilterConfig(getFilterConfig());
+}
+
+function updateFilterPanelVisibility() {
+  const expanded = filterToggle.getAttribute('aria-expanded') === 'true';
+  filterPanel.style.display = expanded ? 'flex' : 'none';
+  filterToggle.textContent = expanded ? 'Filters ▲' : 'Filters ▼';
+}
+
+filterToggle.addEventListener('click', () => {
+  const expanded = filterToggle.getAttribute('aria-expanded') === 'true';
+  filterToggle.setAttribute('aria-expanded', String(!expanded));
+  updateFilterPanelVisibility();
+});
+
+scanAllCheck.addEventListener('change', () => {
+  saveCurrentFilters();
+  if (!scanAllCheck.checked) {
+    // If user unchecked "scan all", auto-expand the panel so they can set filters
+    filterToggle.setAttribute('aria-expanded', 'true');
+    updateFilterPanelVisibility();
+  }
+});
+
+namePrefixInput.addEventListener('input', saveCurrentFilters);
+serviceUuidInput.addEventListener('input', saveCurrentFilters);
+
+function triggerFilterAttention() {
+  filterPanel.classList.add('filter-attention');
+  filterToggle.setAttribute('aria-expanded', 'true');
+  updateFilterPanelVisibility();
+  setTimeout(() => filterPanel.classList.remove('filter-attention'), 2000);
+}
+
+// ── Scan timeout / no-device-found hint ──────────────────────────────────────
+
+function startScanTimeout() {
+  clearScanTimeout();
+  scanTimeoutId = setTimeout(() => {
+    if (!controller.isConnected) {
+      triggerFilterAttention();
+      log('No device selected. Try adjusting the filter options.', 'warn');
+    }
+  }, 3000);
+}
+
+function clearScanTimeout() {
+  if (scanTimeoutId) { clearTimeout(scanTimeoutId); scanTimeoutId = null; }
+}
+
+// ── Connect ─────────────────────────────────────────────────────────────────
 
 btnConnect.addEventListener('click', async () => {
   setBusy(true);
   btnConnect.textContent = 'Connecting…';
+  startScanTimeout();
+
   try {
-    connection = await connectToDevice(onDeviceDisconnect);
-    log(`Connected to "${connection.device.name ?? 'Unknown'}"`, 'ok');
-
-    const deviceSig = detectFromDevice(connection.services);
-    const proto = resolveProtocol(fileSig, deviceSig);
-
-    const ProviderClass = PROVIDERS[proto];
-    if (!ProviderClass) throw new Error(`Unknown protocol: ${proto}`);
-
-    showProtocol(proto);
-    provider = new ProviderClass({ mtu: parseInt(chunkSizeInput.value, 10) || 128 });
-    configureUi(ProviderClass.capabilities);
-
-    provider.addEventListener('log', (e) => log(e.detail.message, e.detail.level));
-    provider.addEventListener('progress', (e) => {
-      const { currentBytes, totalBytes } = e.detail;
-      setProgress(currentBytes, totalBytes);
-    });
-    provider.addEventListener('phase', (e) => setPhase(e.detail.label));
-    provider.addEventListener('needs-reconnect', () => {
-      log('Device rebooted. Please click Reconnect when it advertises again.', 'warn');
-      showConnected(false);
-      if (provider) provider.detach().catch(() => {});
-      connection = null;
-      btnReconnect.style.display = '';
-      btnReconnect.disabled = false;
-      updateDfuButton();
-    });
-
-    await provider.attach(connection);
-    showConnected(true);
-    await refreshSlots();
+    await controller.connect(getFilterConfig());
   } catch (err) {
     log(err.message, 'error');
     showConnected(false);
-    connection = null;
-    provider = null;
   } finally {
     btnConnect.textContent = 'Scan & Connect';
     setBusy(false);
   }
 });
 
-function onDeviceDisconnect() {
-  log('Device disconnected', 'error');
-  showConnected(false);
-  connection = null;
-  provider = null;
-  updateDfuButton();
-  updateConfirmButton(false);
-  progressWrap.style.display = 'none';
-}
-
-// ── Disconnect ─────────────────────────────────────────────────────────────────
+// ── Disconnect ───────────────────────────────────────────────────────────────
 
 btnDisconnect.addEventListener('click', () => {
-  connection?.disconnect();
-  connection = null;
-  provider?.detach().catch(() => {});
-  provider = null;
-  showConnected(false);
-  slotsEl.innerHTML = '';
-  updateDfuButton();
-  updateConfirmButton(false);
+  controller.disconnect();
   log('Disconnected');
 });
 
-// ── Refresh slots ──────────────────────────────────────────────────────────────
+// ── Refresh slots ──────────────────────────────────────────────────────────
 
 btnRefresh.addEventListener('click', async () => {
   setBusy(true);
-  try { await refreshSlots(); } finally { setBusy(false); }
+  try { await controller.refreshSlots(); } catch (err) { log(err.message, 'error'); }
+  finally { setBusy(false); }
 });
-
-async function refreshSlots() {
-  if (!provider) return;
-  log('Listing images…');
-  const slots = await provider.readState();
-  renderSlots(slots);
-  if (slots.length) checkPending(slots);
-  log(`Found ${slots.length} image slot(s)`, 'ok');
-}
 
 // ── DFU ────────────────────────────────────────────────────────────────────────
 
 btnDfu.addEventListener('click', async () => {
-  if (!firmware || !provider) return;
-
   setBusy(true);
   btnDfu.textContent = 'Updating…';
   progressWrap.style.display = '';
-  setProgress(0, firmware.data.byteLength);
 
   try {
-    await provider.loadFirmware(firmware.data);
-    const result = await provider.runUpdate();
-
-    if (result?.needsConfirm) {
-      // SMP flow: reset happened, need reconnect + confirm
-      // UI already handled by 'needs-reconnect' event
-    } else {
-      log('Update complete', 'ok');
-      btnDfu.textContent = 'Done ✓';
-    }
+    await controller.runUpdate();
   } catch (err) {
     log(err.message, 'error');
     btnDfu.textContent = 'Update Firmware';
@@ -300,74 +355,31 @@ btnDfu.addEventListener('click', async () => {
   }
 });
 
-// ── Confirm (SMP only, reconnect after reset) ──────────────────────────────────
+// ── Confirm ─────────────────────────────────────────────────────────────────
 
 btnConfirm.addEventListener('click', async () => {
-  if (!provider) return;
   setBusy(true);
   btnConfirm.textContent = 'Confirming…';
   try {
-    log('Confirming image to make swap permanent…');
-    await provider.confirm();
-
-    const slots = await provider.readState();
-    renderSlots(slots);
-    checkPending(slots);
-    if (slots.find((s) => s.slot === 0)?.confirmed) {
-      log('Slot 0 is now active + confirmed — DFU is complete.', 'ok');
-      btnConfirm.textContent = 'Confirmed ✓';
-    } else {
-      log('Slot 0 is still not confirmed after confirm command.', 'warn');
-      btnConfirm.textContent = 'Confirm Update';
-    }
+    await controller.confirm();
+    log('Slot 0 is now active + confirmed — DFU is complete.', 'ok');
+    btnConfirm.textContent = 'Confirmed ✓';
   } catch (err) {
     log(err.message, 'error');
+    btnConfirm.textContent = 'Confirm Update';
   } finally {
     setBusy(false);
     updateDfuButton();
   }
 });
 
-// ── Reconnect (Nordic buttonless or SMP reset) ───────────────────────────────
+// ── Reconnect ───────────────────────────────────────────────────────────────
 
 btnReconnect.addEventListener('click', async () => {
   btnReconnect.disabled = true;
   btnReconnect.textContent = 'Reconnecting…';
   try {
-    connection = await connectToDevice(onDeviceDisconnect);
-    const deviceSig = detectFromDevice(connection.services);
-    const proto = resolveProtocol(fileSig, deviceSig);
-    const ProviderClass = PROVIDERS[proto];
-    provider = new ProviderClass({ mtu: parseInt(chunkSizeInput.value, 10) || 128 });
-    showProtocol(proto);
-    configureUi(ProviderClass.capabilities);
-
-    provider.addEventListener('log', (e) => log(e.detail.message, e.detail.level));
-    provider.addEventListener('progress', (e) => setProgress(e.detail.currentBytes, e.detail.totalBytes));
-    provider.addEventListener('phase', (e) => setPhase(e.detail.label));
-    provider.addEventListener('needs-reconnect', () => {
-      log('Device rebooted again. Please reconnect.', 'warn');
-      showConnected(false);
-      btnReconnect.style.display = '';
-      btnReconnect.disabled = false;
-    });
-
-    await provider.attach(connection);
-    showConnected(true);
-
-    // Re-load firmware into the new provider instance (buttonless DFU reconnect
-    // creates a fresh provider; the package must be re-loaded so Update Firmware
-    // works without requiring the user to pick the file again).
-    if (firmware) {
-      try {
-        await provider.loadFirmware(firmware.data);
-        updateDfuButton();
-      } catch (err) {
-        log(err.message, 'error');
-      }
-    }
-
-    await refreshSlots();
+    await controller.reconnect(getFilterConfig());
     btnReconnect.style.display = 'none';
     btnReconnect.textContent = 'Reconnect';
   } catch (err) {
@@ -378,6 +390,7 @@ btnReconnect.addEventListener('click', async () => {
   }
 });
 
-// ── Initial state ──────────────────────────────────────────────────────────────
+// ── Initial state ───────────────────────────────────────────────────────────
 
 btnReconnect.style.display = 'none';
+restoreFilters();

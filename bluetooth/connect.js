@@ -1,10 +1,19 @@
 import { ALL_OPTIONAL_SERVICES, REGISTRY, LEGACY_DFU_UUID } from '../core/registry.js';
+import { normalizeUuid } from '../core/filter-store.js';
 
 export const SMP_SERVICE_UUID     = '8d53dc1d-1db7-4cd3-868b-8a527460aa84';
 export const SMP_CHAR_UUID        = 'da2e7828-fbce-4e01-ae9e-261174997c48';
 
-/** Connect to the first available BLE device advertising any supported service. */
-export async function connectToDevice(onDisconnect) {
+/**
+ * Connect to a BLE device using the provided filter configuration.
+ *
+ * @param {object} filterConfig
+ * @param {boolean} filterConfig.scanAll      — show every BLE device in the picker
+ * @param {string}  filterConfig.namePrefix   — optional device-name prefix filter
+ * @param {string}  filterConfig.serviceUuid  — optional service UUID filter
+ * @param {function} onDisconnect             — callback when GATT disconnects
+ */
+export async function connectToDevice(filterConfig, onDisconnect) {
   if (!navigator.bluetooth) {
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isHTTP = window.location.protocol !== 'https:';
@@ -19,18 +28,9 @@ export async function connectToDevice(onDisconnect) {
     throw new Error(msg);
   }
 
-  const filters = [
-    { services: [ REGISTRY.smp.serviceUuid ] },
-    { services: [ REGISTRY.nordic.serviceUuid ] },
-    { namePrefix: REGISTRY.nordic.namePrefix },
-    { namePrefix: 'Nordic_Buttonless' },
-    { namePrefix: 'DfuTest' },
-  ];
+  const requestArgs = buildRequestArgs(filterConfig);
 
-  const device = await navigator.bluetooth.requestDevice({
-    filters,
-    optionalServices: ALL_OPTIONAL_SERVICES,
-  });
+  const device = await navigator.bluetooth.requestDevice(requestArgs);
 
   // Retry gatt.connect() a few times — the device may still be booting its
   // BLE stack after a firmware reset, which causes transient "Connection
@@ -78,4 +78,46 @@ export async function connectToDevice(onDisconnect) {
   }
 
   return { device, server, services: serviceMap, disconnect };
+}
+
+/** Build navigator.bluetooth.requestDevice() arguments from user filter config. */
+function buildRequestArgs(filterConfig) {
+  const optionalServices = [...ALL_OPTIONAL_SERVICES];
+
+  if (filterConfig.scanAll) {
+    return {
+      acceptAllDevices: true,
+      optionalServices,
+    };
+  }
+
+  const filters = [];
+
+  // Custom service UUID
+  const uuid = normalizeUuid(filterConfig.serviceUuid);
+  if (uuid) {
+    filters.push({ services: [uuid] });
+    if (!optionalServices.includes(uuid)) {
+      optionalServices.push(uuid);
+    }
+  }
+
+  // Custom name prefix
+  const prefix = (filterConfig.namePrefix || '').trim();
+  if (prefix) {
+    filters.push({ namePrefix: prefix });
+  }
+
+  // Fallback defaults when the user left both fields empty
+  if (filters.length === 0) {
+    filters.push(
+      { services: [REGISTRY.smp.serviceUuid] },
+      { services: [REGISTRY.nordic.serviceUuid] },
+      { namePrefix: REGISTRY.nordic.namePrefix },
+      { namePrefix: 'Nordic_Buttonless' },
+      { namePrefix: 'DfuTest' },
+    );
+  }
+
+  return { filters, optionalServices };
 }
