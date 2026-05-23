@@ -138,8 +138,12 @@ function renderSlots(slots) {
 
 function checkPending(slots) {
   const s0 = slots.find((s) => s.slot === 0);
-  if (s0 && s0.active && s0.pending && !s0.confirmed) {
-    log('New image is active but pending — if the device reboots now it will revert. Click "Confirm" to make it permanent.', 'warn');
+  // After a test-mode swap, MCUboot reports the new primary image as
+  // active=true, confirmed=false (the `pending` trailer flag lived on the
+  // secondary slot pre-swap and is cleared once the swap completes).
+  // Treat any active-but-unconfirmed image as awaiting confirmation.
+  if (s0 && s0.active && !s0.confirmed) {
+    log('New image is active but not yet confirmed — if the device reboots now it will revert. Click "Confirm" to make it permanent.', 'warn');
     updateConfirmButton(true);
   } else {
     updateConfirmButton(false);
