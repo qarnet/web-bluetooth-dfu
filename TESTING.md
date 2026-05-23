@@ -71,12 +71,31 @@ build/zephyr/zephyr.signed.bin
 
 ---
 
-### Step 3 — Serve the web app
+### Step 3 — Serve the web app over HTTPS
+
+Web Bluetooth requires a secure context (HTTPS or localhost). The project includes
+a small Python HTTPS server that auto-generates a self-signed certificate:
 
 ```bash
 cd path/to/web-smp-dfu
-python3 -m http.server 8080
+./serve.py
 ```
+
+On first run it creates `.localhost.pem` / `.localhost-key.pem`. Open
+`https://localhost:8443` in Chrome, accept the certificate warning once, and
+Web Bluetooth will work without any flags.
+
+If you need to access the page from another machine on your LAN:
+
+```bash
+./serve.py 0.0.0.0
+```
+
+Then open `https://<host-ip>:8443` on the target device.
+
+**Fallback:** If you prefer plain HTTP, use `python3 -m http.server 8080` and
+enable `chrome://flags/#unsafely-treat-insecure-origin-as-secure` for
+`http://localhost:8080`.
 
 Web Bluetooth requires HTTPS. For local HTTP, enable this Chrome flag:
 

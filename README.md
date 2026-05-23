@@ -68,24 +68,47 @@ chunk size up to 244 bytes for faster transfers.
 
 ## Running locally
 
-### Option A — Python + Chrome flag (no HTTPS needed)
+### Option A — HTTPS with self-signed certificate (recommended)
+
+The project includes a small Python script that serves the app over HTTPS and
+auto-generates a self-signed certificate on first run:
+
+```bash
+./serve.py
+```
+
+Open `https://localhost:8443` in Chrome, accept the certificate warning once,
+and Web Bluetooth works without any flags.
+
+For LAN access (e.g. testing from Android Chrome):
+
+```bash
+./serve.py 0.0.0.0
+```
+
+### Option B — Any HTTPS static host
+
+Drag the project folder to [Netlify Drop](https://app.netlify.com/drop) or push
+to GitHub Pages. Both provide HTTPS automatically.
+
+### Option C — Local HTTPS with caddy
+
+```bash
+caddy file-server --root . --listen :8443 --access-log
+# caddy handles HTTPS automatically on localhost
+```
+
+### Option D — Plain HTTP with Chrome flag
+
+If you cannot use HTTPS at all, serve over plain HTTP and whitelist the origin
+in Chrome:
 
 ```bash
 python3 -m http.server 8080
 ```
 
-In Chrome, go to `chrome://flags/#unsafely-treat-insecure-origin-as-secure`, add `http://localhost:8080`, and relaunch Chrome.
-
-### Option B — Any HTTPS static host
-
-Drag the project folder to [Netlify Drop](https://app.netlify.com/drop) or push to GitHub Pages. Both provide HTTPS automatically.
-
-### Option C — Local HTTPS with caddy
-
-```bash
-caddy file-server --root . --listen :8080 --access-log
-# caddy handles HTTPS automatically on localhost
-```
+Then enable `chrome://flags/#unsafely-treat-insecure-origin-as-secure` and add
+`http://localhost:8080`.
 
 ---
 
