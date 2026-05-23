@@ -18,7 +18,7 @@ V2_VER  := 2.0.0
 
 WEST := nrfutil sdk-manager toolchain launch --ncs-version $(NCS) --chdir $(NCS_DIR) -- west
 
-.PHONY: build build-v1 build-v2 flash test test-nordic dfu serve serve-lan harness-deps browser-test browser-test-nordic clean
+.PHONY: build build-v1 build-v2 flash test test-nordic dfu serve serve-lan harness-deps browser-test browser-test-headless browser-test-nordic clean
 
 build: build-v1 build-v2
 
@@ -46,6 +46,13 @@ dfu: build test
 # SMP browser DFU test — flash baseline, run Puppeteer-driven Chrome test
 browser-test: flash
 	node $(REPO)/tools/browser-dfu-test.mjs $(V2_BIN)
+
+# Same test under a virtual X server (no GUI required). Chrome runs headed
+# against Xvfb so Web Bluetooth still works. Requires xvfb-run + a BLE
+# adapter visible to BlueZ (e.g. usbipd-attached BT400).
+browser-test-headless: flash
+	xvfb-run -a --server-args="-screen 0 1280x900x24" \
+	  node $(REPO)/tools/browser-dfu-test.mjs $(V2_BIN)
 
 # Nordic browser DFU test — requires Nordic bootloader + ZIP argument
 # Usage: make browser-test-nordic ZIP=path/to/package.zip
