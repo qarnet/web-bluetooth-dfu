@@ -2,8 +2,9 @@
 """Serve the web-smp-dfu app over HTTPS for Web Bluetooth testing.
 
 Usage:
-    ./serve.py              # https://localhost:8443
-    ./serve.py 0.0.0.0      # accessible from other devices on the LAN
+    ./serve.py                    # https://localhost:8443
+    ./serve.py 0.0.0.0            # bind all interfaces (WSL → Windows proxy needed)
+    ./serve.py 192.168.178.65      # bind specific LAN IP (direct LAN access)
 
 First run generates a self-signed cert in .localhost.pem / .localhost-key.pem.
 Accept the browser security warning once — Web Bluetooth will work thereafter.
@@ -75,7 +76,14 @@ def main():
     host = sys.argv[1] if len(sys.argv) > 1 else "localhost"
     addr = (host, PORT)
 
-    lan_ip = get_lan_ip() if host == "0.0.0.0" else None
+    # Determine if we need LAN IP in the cert.
+    # If host is 0.0.0.0 or a non-loopback IP, include it in the SAN.
+    lan_ip = None
+    if host == "0.0.0.0":
+        lan_ip = get_lan_ip()
+    elif host not in ("localhost", "127.0.0.1"):
+        lan_ip = host
+
     ensure_cert(include_ip=lan_ip)
 
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
