@@ -50,4 +50,37 @@ describe('SecureDfuPackage', () => {
     const pkg = new SecureDfuPackage(buf);
     await assert.rejects(pkg.load(JSZip), /zip file/i);
   });
+
+  it('should expose manifest info for single-image', async () => {
+    const buf = readFileSync(FIXTURE_ZIP);
+    const pkg = new SecureDfuPackage(buf);
+    await pkg.load(JSZip);
+    const info = pkg.getManifestInfo();
+    assert.strictEqual(info.hasApp, true);
+    assert.strictEqual(info.hasBase, false);
+    assert.deepStrictEqual(info.types, ['application']);
+  });
+
+  it('should expose manifest info for multi-image', async () => {
+    const buf = readFileSync('tests/fixtures/multi_image_s140.zip');
+    const pkg = new SecureDfuPackage(buf);
+    await pkg.load(JSZip);
+    const info = pkg.getManifestInfo();
+    assert.strictEqual(info.hasApp, true);
+    assert.strictEqual(info.hasBase, true);
+    assert.ok(info.types.includes('softdevice'));
+    assert.ok(info.types.includes('application'));
+  });
+
+  it('should load base and app from multi-image fixture', async () => {
+    const buf = readFileSync('tests/fixtures/multi_image_s140.zip');
+    const pkg = new SecureDfuPackage(buf);
+    await pkg.load(JSZip);
+    const base = await pkg.getBaseImage();
+    const app  = await pkg.getAppImage();
+    assert.ok(base, 'should return base image');
+    assert.strictEqual(base.type, 'softdevice');
+    assert.ok(app, 'should return app image');
+    assert.strictEqual(app.type, 'application');
+  });
 });

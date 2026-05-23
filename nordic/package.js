@@ -31,6 +31,16 @@ export class SecureDfuPackage {
     return null;
   }
 
+  /** Expose manifest metadata without loading image bytes. */
+  getManifestInfo() {
+    const types = Object.keys(this.manifest || {});
+    return {
+      types,
+      hasBase: types.some((t) => ['softdevice', 'bootloader', 'softdevice_bootloader'].includes(t)),
+      hasApp: types.includes('application'),
+    };
+  }
+
   getBaseImage(JSZip) { return this.getImage(['softdevice', 'bootloader', 'softdevice_bootloader']); }
   getAppImage(JSZip)  { return this.getImage(['application']); }
 }

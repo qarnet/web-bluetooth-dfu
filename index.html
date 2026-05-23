@@ -99,6 +99,14 @@
       padding: 0.2rem 0.4rem; color: #e2e8f0; font: inherit; font-size: 0.8rem;
     }
 
+    .multi-image-row {
+      display: flex; align-items: center; gap: 0.75rem;
+      font-size: 0.85rem; color: #94a3b8; margin-top: 0.25rem;
+    }
+    .multi-image-row input[type=checkbox] { accent-color: #3b82f6; }
+    .multi-image-row.disabled { opacity: 0.5; }
+    .multi-image-info { font-size: 0.75rem; color: #64748b; }
+
     .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
     .protocol-badge {
@@ -206,6 +214,13 @@
         <span id="file-size"></span>
         <span>·</span>
         <label>Chunk size <input type="number" id="chunk-size" min="20" max="244" value="128" /> bytes</label>
+      </div>
+      <div class="multi-image-row" id="multi-image-row" style="display:none">
+        <label class="multi-image-label">
+          <input type="checkbox" id="multi-image-check" />
+          Multi-image update (SoftDevice + Application)
+        </label>
+        <span class="multi-image-info" id="multi-image-info"></span>
       </div>
     </section>
 

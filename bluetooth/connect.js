@@ -80,6 +80,51 @@ export async function connectToDevice(filterConfig, onDisconnect) {
   return { device, server, services: serviceMap, disconnect };
 }
 
+/**
+ * Reconnect to an existing BluetoothDevice by MAC address — no picker.
+ * Retries gatt.connect() up to 10 times with 1s backoff to handle boot delays.
+ *
+ * @param {BluetoothDevice} device    — previously-granted device object
+ * @param {function}        onDisconnect
+ */
+export async function reconnectToDevice(device, onDisconnect) {
+  let server;
+  const maxRetries = 10;
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      server = await device.gatt.connect();
+      break;
+    } catch (err) {
+      if (attempt === maxRetries) throw new Error(`Reconnect failed after ${maxRetries} attempts: ${err.message}`);
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+  }
+
+  // Re-enumerate services after reboot (the service set may change)
+  const services = await server.getPrimaryServices();
+  const serviceMap = new Map();
+  for (const service of services) {
+    const charMap = new Map();
+    for (const characteristic of await service.getCharacteristics()) {
+      charMap.set(characteristic.uuid, characteristic);
+    }
+    serviceMap.set(service.uuid, { service, characteristics: charMap });
+  }
+
+  if (onDisconnect) {
+    device.addEventListener('gattserverdisconnected', onDisconnect);
+  }
+
+  function disconnect() {
+    if (onDisconnect) {
+      device.removeEventListener('gattserverdisconnected', onDisconnect);
+    }
+    if (server.connected) server.disconnect();
+  }
+
+  return { device, server, services: serviceMap, disconnect };
+}
+
 /** Build navigator.bluetooth.requestDevice() arguments from user filter config. */
 function buildRequestArgs(filterConfig) {
   const optionalServices = [...ALL_OPTIONAL_SERVICES];

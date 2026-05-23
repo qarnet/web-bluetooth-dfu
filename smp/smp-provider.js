@@ -70,41 +70,27 @@ export class SmpProvider extends DfuProvider {
     }
   }
 
-  async readState(retries = 2) {
-    let lastErr = null;
-    for (let attempt = 0; attempt <= retries; attempt++) {
-      try {
-        const msg = await this._sendAndWait((done) => {
-          this._mcuMgr.onMessage((m) => {
-            if (m.op === 1 && m.group === 1 && m.id === 0) done(m.data);
-          });
-          this._mcuMgr.cmdImageState();
-        }, 30000);
+  async readState() {
+    const msg = await this._sendAndWait((done) => {
+      this._mcuMgr.onMessage((m) => {
+        if (m.op === 1 && m.group === 1 && m.id === 0) done(m.data);
+      });
+      this._mcuMgr.cmdImageState();
+    }, 30000);
 
-        if (msg.rc !== undefined && msg.rc !== 0) {
-          throw new Error(SmpProvider._fmtRc(msg.rc, 'Image state read'));
-        }
-
-        const images = msg.images ?? [];
-        return images.map((img) => ({
-          slot:      img.slot,
-          version:   fmtVersion(img.version),
-          hash:      img.hash ? bufToHex(img.hash) : '',
-          active:    !!img.active,
-          pending:   !!img.pending,
-          confirmed: !!img.confirmed,
-        }));
-      } catch (err) {
-        lastErr = err;
-        if (attempt < retries && err.message.includes('timeout')) {
-          this.emit('log', { message: `readState timeout, retrying (${attempt + 1}/${retries})…`, level: 'warn' });
-          await new Promise((r) => setTimeout(r, 1000));
-          continue;
-        }
-        throw err;
-      }
+    if (msg.rc !== undefined && msg.rc !== 0) {
+      throw new Error(SmpProvider._fmtRc(msg.rc, 'Image state read'));
     }
-    throw lastErr;
+
+    const images = msg.images ?? [];
+    return images.map((img) => ({
+      slot:      img.slot,
+      version:   fmtVersion(img.version),
+      hash:      img.hash ? bufToHex(img.hash) : '',
+      active:    !!img.active,
+      pending:   !!img.pending,
+      confirmed: !!img.confirmed,
+    }));
   }
 
   async loadFirmware(file) {
@@ -148,7 +134,6 @@ export class SmpProvider extends DfuProvider {
   async confirm() {
     if (!this._mcuMgr) throw new Error('Manager not attached');
     const slots = await this.readState();
-    console.log('DEBUG confirm readState slots:', JSON.stringify(slots));
     const s0 = slots.find((s) => s.slot === 0);
     if (!s0 || !s0.active || s0.confirmed) {
       this.emit('log', { message: 'Slot 0 is not active or already confirmed — nothing to confirm.', level: 'warn' });
@@ -159,7 +144,7 @@ export class SmpProvider extends DfuProvider {
         if (msg.group === 1 && msg.id === 0) done(msg.data);
       });
       this._mcuMgr.cmdImageConfirm(s0.hash);
-    });
+    }, 30000);
 
     this.emit('phase', { phase: 'confirm', label: 'Confirmed' });
   }

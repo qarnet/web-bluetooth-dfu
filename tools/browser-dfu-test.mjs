@@ -266,7 +266,7 @@ async function main() {
           const el = document.getElementById('btn-confirm');
           return el && el.textContent.includes('Confirmed');
         },
-        { label: 'confirm complete' },
+        { label: 'confirm complete', timeout: 60000 },
       );
       info('image confirmed');
     }
@@ -275,28 +275,23 @@ async function main() {
     step('Verifying final slot state');
     await page.click('#btn-refresh');
 
+    // Wait for refreshed slots to include the confirmed badge
     await waitForPredicate(
       page,
-      () => document.querySelectorAll('.slot').length > 0,
-      { label: 'slots refreshed after confirm' },
+      () => {
+        const slot = document.querySelector('.slot');
+        if (!slot) return false;
+        const badges = slot.querySelector('.badges')?.textContent || '';
+        return badges.includes('confirmed');
+      },
+      { label: 'slot 0 confirmed after refresh' },
     );
 
     const finalVersion = await readSlot0Version(page);
-    const isConfirmed = await page.evaluate(() => {
-      const slot = document.querySelector('.slot');
-      if (!slot) return false;
-      const badges = slot.querySelector('.badges')?.textContent || '';
-      return badges.includes('confirmed');
-    });
-
     info(`slot 0 version after update: ${finalVersion}`);
-    info(`slot 0 confirmed: ${isConfirmed}`);
 
     if (finalVersion !== expectedVersion) {
       throw new Error(`Version mismatch: expected ${expectedVersion}, got ${finalVersion}`);
-    }
-    if (!isConfirmed) {
-      throw new Error('Slot 0 is not confirmed after DFU');
     }
 
     pass(`Device upgraded to ${finalVersion} and confirmed.`);

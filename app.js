@@ -32,6 +32,11 @@ const scanAllCheck    = document.getElementById('scan-all');
 const namePrefixInput = document.getElementById('name-prefix');
 const serviceUuidInput= document.getElementById('service-uuid');
 
+// Multi-image UI refs
+const multiImageRow   = document.getElementById('multi-image-row');
+const multiImageCheck = document.getElementById('multi-image-check');
+const multiImageInfo  = document.getElementById('multi-image-info');
+
 // ── State ────────────────────────────────────────────────────────────────────
 
 let scanTimeoutId;
@@ -39,17 +44,44 @@ let scanTimeoutId;
 // ── Controller event wiring ──────────────────────────────────────────────────
 
 controller.addEventListener('firmware-loaded', (e) => {
-  const { name, size, protocol } = e.detail;
+  const { name, size, protocol, nordicInfo } = e.detail;
   fileNameEl.textContent = name;
   fileSizeEl.textContent = `${(size / 1024).toFixed(1)} KB`;
   showProtocol(protocol);
   updateDfuButton();
+
+  // Multi-image checkbox for Nordic packages
+  if (protocol === 'nordic' && nordicInfo) {
+    const hasBase = nordicInfo.hasBase;
+    const hasApp  = nordicInfo.hasApp;
+    if (hasBase && hasApp) {
+      multiImageRow.style.display = '';
+      multiImageCheck.disabled = false;
+      multiImageCheck.checked = false; // unchecked by default
+      multiImageInfo.textContent = `Contains: ${nordicInfo.types.join(', ')}`;
+      // Push checkbox state into provider
+      const provider = controller._provider;
+      if (provider && provider.setMultiImage) {
+        provider.setMultiImage(false);
+      }
+    } else {
+      multiImageRow.style.display = '';
+      multiImageCheck.disabled = true;
+      multiImageCheck.checked = false;
+      multiImageInfo.textContent = hasApp
+        ? 'Application only (single-image)'
+        : (hasBase ? 'Base image only' : 'Unknown contents');
+    }
+  } else {
+    multiImageRow.style.display = 'none';
+  }
 });
 
 controller.addEventListener('firmware-unloaded', () => {
   fileNameEl.textContent = '';
   fileSizeEl.textContent = '';
   showProtocol(null);
+  multiImageRow.style.display = 'none';
   updateDfuButton();
 });
 
@@ -277,6 +309,15 @@ scanAllCheck.addEventListener('change', () => {
 
 namePrefixInput.addEventListener('input', saveCurrentFilters);
 serviceUuidInput.addEventListener('input', saveCurrentFilters);
+
+// ── Multi-image checkbox ────────────────────────────────────────────────────
+
+multiImageCheck.addEventListener('change', () => {
+  const provider = controller._provider;
+  if (provider && provider.setMultiImage) {
+    provider.setMultiImage(multiImageCheck.checked);
+  }
+});
 
 function triggerFilterAttention() {
   filterPanel.classList.add('filter-attention');

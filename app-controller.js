@@ -1,4 +1,4 @@
-import { connectToDevice } from './bluetooth/connect.js';
+import { connectToDevice, reconnectToDevice } from './bluetooth/connect.js';
 import { SmpProvider } from './smp/smp-provider.js';
 import { NordicProvider } from './nordic/nordic-provider.js';
 import { detectFromFile, detectFromDevice, resolveProtocol } from './core/detect.js';
@@ -32,11 +32,13 @@ export class AppController extends EventTarget {
   constructor() {
     super();
     this._state       = STATES.IDLE;
+    this._device      = null;   // BluetoothDevice ref for MAC-based reconnect
     this._connection  = null;
     this._provider    = null;
     this._firmware    = null;
     this._fileSig     = null;
     this._abortCtrl   = null;   // current operation abort controller
+    this._autoReconnecting = false;
   }
 
   // ── Public accessors (read-only for UI) ────────────────────────────────────
@@ -70,7 +72,20 @@ export class AppController extends EventTarget {
     this._firmware = { data, file };
     this._fileSig  = sig;
 
-    this.emit('firmware-loaded', { name: file.name, size: data.byteLength, protocol: sig });
+    const payload = { name: file.name, size: data.byteLength, protocol: sig };
+
+    // For Nordic ZIPs, parse manifest metadata so the UI can show multi-image info
+    if (sig === 'nordic') {
+      try {
+        const { NordicProvider } = await import('./nordic/nordic-provider.js');
+        const analysis = await NordicProvider.analyzePackage(data);
+        payload.nordicInfo = analysis;
+      } catch (err) {
+        this.emit('log', { message: `Failed to analyze Nordic package: ${err.message}`, level: 'warn' });
+      }
+    }
+
+    this.emit('firmware-loaded', payload);
     return sig;
   }
 
@@ -94,6 +109,7 @@ export class AppController extends EventTarget {
     try {
       const connection = await connectToDevice(filterConfig, onDisconnect);
       this._connection = connection;
+      this._device = connection.device;
 
       const deviceSig = detectFromDevice(connection.services);
       const proto = resolveProtocol(this._fileSig, deviceSig);
@@ -109,16 +125,18 @@ export class AppController extends EventTarget {
       provider.addEventListener('log',       (e) => this.emit('log',       e.detail));
       provider.addEventListener('progress',  (e) => this.emit('progress',  e.detail));
       provider.addEventListener('phase',     (e) => this.emit('phase',     e.detail));
-      provider.addEventListener('needs-reconnect', () => {
-        this.emit('needs-reconnect', {});
-        // Only detach if attach() has already finished (SMP runUpdate path).
-        // If needs-reconnect fires DURING attach() (Nordic buttonless path),
-        // the same provider instance will be reused after reconnect, so we
-        // must keep it alive.
+      provider.addEventListener('needs-reconnect', (e) => {
+        const detail = e.detail || {};
+        this.emit('needs-reconnect', detail);
         if (attachComplete) {
           this._provider?.detach().catch(() => {});
         }
         this._connection = null;
+        // Only auto-reconnect for Nordic multi-image continuation.
+        // SMP confirm is a manual step; let the user click Reconnect.
+        if (detail.continuationTimeout) {
+          this._autoReconnect(detail.continuationTimeout);
+        }
       });
 
       await provider.attach(connection);
@@ -224,8 +242,9 @@ export class AppController extends EventTarget {
 
     try {
       await this._provider.confirm();
-      const slots = await this._provider.readState();
-      this.emit('slots-updated', { slots });
+      // Post-confirm slot read is skipped — it can hang on some firmware
+      // versions and the user already saw the pre-confirm slot state.
+      this.emit('update-complete', {});
     } finally {
       this._abortCtrl = null;
       this._setState(STATES.CONNECTED);
@@ -236,6 +255,55 @@ export class AppController extends EventTarget {
 
   async reconnect(filterConfig) {
     await this.connect(filterConfig);
+  }
+
+  // ── Auto reconnect (MAC-based, no picker) ───────────────────────────────────
+
+  async _autoReconnect(continuationTimeout) {
+    if (!this._device || !this._provider || this._autoReconnecting) return;
+    this._autoReconnecting = true;
+
+    this._setState(STATES.CONNECTING);
+    this.emit('log', { message: 'Waiting for device to re-advertise…', level: 'info' });
+
+    const onDisconnect = () => this._handleDisconnect('device');
+    try {
+      const connection = await reconnectToDevice(this._device, onDisconnect);
+
+      // Bail out if a manual reconnect already succeeded in the meantime.
+      if (this._connection && this._connection.server?.connected) {
+        this.emit('log', { message: 'Manual reconnect already active — aborting auto-reconnect.', level: 'info' });
+        if (connection.server?.connected) connection.disconnect();
+        return;
+      }
+
+      this._connection = connection;
+      const provider = this._provider;
+
+      await provider.attach(connection);
+
+      this._setState(STATES.CONNECTED);
+      this.emit('connected', {
+        deviceName: connection.device.name ?? 'Unknown',
+        protocol: provider.constructor.id,
+        capabilities: provider.constructor.capabilities,
+      });
+
+      if (provider.constructor.capabilities.hasSlots) {
+        try {
+          const slots = await provider.readState();
+          this.emit('slots-updated', { slots });
+        } catch (err) {
+          this.emit('log', { message: err.message, level: 'error' });
+        }
+      }
+    } catch (err) {
+      this._setState(STATES.IDLE);
+      this.emit('log', { message: `Auto-reconnect failed: ${err.message}`, level: 'error' });
+      this.emit('needs-reconnect', {}); // notify UI to show manual Reconnect button
+    } finally {
+      this._autoReconnecting = false;
+    }
   }
 
   // ── internal ──────────────────────────────────────────────────────────────

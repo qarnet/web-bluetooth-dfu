@@ -21,7 +21,28 @@ export class NordicProvider extends DfuProvider {
   constructor() {
     super();
     this._dfu = null;
-    this._package = null;
+    this._appImage = null;
+    this._baseImage = null;
+    this._baseTransferred = false;
+    this._multiImageEnabled = false;
+  }
+
+  /** Analyze a ZIP buffer without loading image data. */
+  static async analyzePackage(buffer) {
+    const pkg = new SecureDfuPackage(buffer);
+    await pkg.load(JSZip);
+    const info = pkg.getManifestInfo();
+    return {
+      ...info,
+      // Pre-load the image objects so runUpdate can use them
+      _rawBase: await pkg.getBaseImage(),
+      _rawApp:  await pkg.getAppImage(),
+    };
+  }
+
+  /** Toggle multi-image mode from UI checkbox. */
+  setMultiImage(enabled) {
+    this._multiImageEnabled = enabled;
   }
 
   async attach(session) {
@@ -71,26 +92,53 @@ export class NordicProvider extends DfuProvider {
     const pkg = new SecureDfuPackage(buffer);
     await pkg.load(JSZip);
 
-    // Prefer application first, then base images
-    let image = await pkg.getAppImage();
-    if (!image) image = await pkg.getBaseImage();
-    if (!image) throw new Error('No application or base image found in the ZIP package');
+    this._baseImage = await pkg.getBaseImage();
+    this._appImage  = await pkg.getAppImage();
+    this._baseTransferred = false;
 
-    this._package = image;
+    if (!this._baseImage && !this._appImage) {
+      throw new Error('No application or base image found in the ZIP package');
+    }
   }
 
   async runUpdate() {
-    if (!this._package || !this._dfu) throw new Error('Package or DFU engine not ready');
+    if (!this._dfu) throw new Error('DFU engine not ready');
 
-    this.emit('phase', { phase: 'transfer', label: 'Transferring init packet…' });
-    await this._dfu.transferInit(this._package.initData);
+    // Step 1 — Base image (only when multi-image mode enabled)
+    if (this._multiImageEnabled && this._baseImage && !this._baseTransferred) {
+      await this._transferImage(this._baseImage, 'Base firmware (SoftDevice/Bootloader)');
+      this._baseTransferred = true;
+      // Device will disconnect and reboot; bootloader stays in DFU mode
+      // with continuation timeout (~10 s).
+      this.emit('needs-reconnect', { continuationTimeout: 10000 });
+      return { needsContinue: true };
+    }
 
-    this.emit('phase', { phase: 'transfer', label: 'Transferring firmware…' });
-    await this._dfu.transferFirmware(this._package.imageData);
+    // Step 2 — Application image
+    if (this._appImage) {
+      await this._transferImage(this._appImage, 'Application');
+      this.emit('phase', { phase: 'execute', label: 'DFU complete' });
+      this.emit('log', { message: 'DFU complete. Device will reboot automatically.', level: 'ok' });
+      return { needsConfirm: false, complete: true };
+    }
 
-    this.emit('phase', { phase: 'execute', label: 'DFU complete' });
-    this.emit('log', { message: 'DFU complete. Device will reboot automatically.', level: 'ok' });
-    return { needsConfirm: false };
+    // Edge case: only a base image and not in multi-image mode
+    if (this._baseImage) {
+      await this._transferImage(this._baseImage, 'Base firmware');
+      this.emit('phase', { phase: 'execute', label: 'DFU complete' });
+      this.emit('log', { message: 'DFU complete. Device will reboot automatically.', level: 'ok' });
+      return { needsConfirm: false, complete: true };
+    }
+
+    throw new Error('No image selected for transfer');
+  }
+
+  async _transferImage(image, label) {
+    this.emit('phase', { phase: 'transfer', label: `Transferring init packet (${label})…` });
+    await this._dfu.transferInit(image.initData);
+
+    this.emit('phase', { phase: 'transfer', label: `Transferring firmware (${label})…` });
+    await this._dfu.transferFirmware(image.imageData);
   }
 
   async confirm() {
