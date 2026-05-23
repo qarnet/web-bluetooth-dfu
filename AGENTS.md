@@ -1,12 +1,45 @@
 # web-smp-dfu — agent guidance
 
-Browser-based MCUboot DFU updater for Zephyr/NCS devices. Vanilla HTML + ES modules, no build step, no runtime npm dependencies.
+Browser-based firmware updater for nRF devices over Bluetooth LE.
+Supports **SMP / MCUboot** (Zephyr / nRF Connect SDK) and **Nordic Secure DFU**
+(nRF5 SDK) protocols with automatic detection.
+
+Vanilla HTML + ES modules, no build step, no runtime npm dependencies.
 
 ## Architecture constraints
 
 - **No build step.** The browser loads modules directly. Do not add a bundler (webpack, Vite, esbuild), transpiler, or framework (React, Vue, Svelte).
-- **No runtime npm dependencies.** If a library is needed, vendor it as a single ES module in `vendor/`. The current CBOR library (`vendor/cbor-x.js`) was generated with `esbuild` from `cbor-x` — see README for the exact command.
+- **No runtime npm dependencies.** If a library is needed, vendor it as a single ES module in `vendor/`. Dependencies installed in `tools/` (puppeteer, node-ble) are dev-only and not shipped with the app.
 - **HTTPS or localhost only.** Web Bluetooth requires a secure context. The README documents the Chrome flag for local HTTP (`unsafely-treat-insecure-origin-as-secure`).
+
+## Project layout
+
+| File | Responsibility |
+|---|---|
+| `index.html` | DOM, inline CSS, no framework |
+| `app.js` | UI orchestration and DFU state machine |
+| `bluetooth/connect.js` | Web Bluetooth device picker, GATT connect/disconnect, service enumeration |
+| `core/events.js` | EventTarget base for providers |
+| `core/provider.js` | `DfuProvider` base class + capability flags |
+| `core/registry.js` | Static table of known providers (UUIDs, file matchers) |
+| `core/detect.js` | Device + file detection, conflict resolution |
+| `smp/cbor.js` | Minimal CBOR encoder/decoder |
+| `smp/mcumgr.js` | SMP protocol engine (transport-decoupled, write queue) |
+| `smp/smp-provider.js` | DfuProvider adapter for SMP/MCUboot |
+| `nordic/secure-dfu.js` | Nordic Secure DFU transfer engine with cross-platform event polyfills |
+| `nordic/package.js` | `.zip` parser for Nordic DFU packages |
+| `nordic/nordic-provider.js` | DfuProvider adapter for Nordic Secure DFU |
+| `vendor/cbor-x.js` | Vendored CBOR library |
+| `vendor/jszip.mjs` | Vendored JSZip ESM bundle |
+| `vendor/crc32.js` | Vendored CRC-32 implementation matching Nordic firmware algorithm |
+
+## SMP protocol quirks
+
+- **Header:** 8 bytes big-endian: `Op(1) | Flags(1) | Length(2) | Group(2) | Seq(1) | Cmd(1)`.
+- **Transport:** GATT Write Without Response for requests, GATT Notifications for responses. UUIDs are in `bluetooth/connect.js`.
+- **Queued writes:** `writeValueWithoutResponse` throws if called while another is in flight. `MCUManager` (in `smp/mcumgr.js`) handles this internally via `#enqueue` — direct access to the characteristic should not be needed.
+- **Timeout:** `MCUManager.send()` times out after 30s. The **reset command is expected to timeout** because the device disconnects immediately; callers should catch and ignore the timeout (see `SmpProvider.runUpdate()` implementation).
+- **Seq tracking:** `seq` is an auto-incrementing `& 0xff` byte used to match requests with notifications.
 
 ## CBOR gotcha
 
@@ -18,28 +51,7 @@ const cbor = new Encoder({ useRecords: false, tagUint8Array: false });
 
 Always instantiate `Encoder` with these flags before encoding SMP payloads, or the device will silently fail to parse.
 
-## Project layout
-
-| File | Responsibility |
-|---|---|
-| `index.html` | DOM, inline CSS, no framework |
-| `app.js` | UI orchestration and DFU state machine |
-| `bluetooth/connect.js` | `navigator.bluetooth` device picker, GATT connect/disconnect |
-| `smp/protocol.js` | `SmpClient` — SMP header encoding, CBOR, notification parsing, **write queue** |
-| `smp/image.js` | High-level DFU ops: `validateImage`, `listImages`, `uploadFirmware`, `testImage`, `confirmImage`, `resetDevice` |
-| `vendor/cbor-x.js` | Vendored CBOR library only |
-
-**Rule for new SMP operations:** wire-level constants (Op/Group/Cmd IDs) go in `smp/protocol.js`; high-level helpers go in `smp/image.js` (or `smp/<group>.js` if adding a new group).
-
-## SMP protocol quirks
-
-- **Header:** 8 bytes big-endian: `Op(1) | Flags(1) | Length(2) | Group(2) | Seq(1) | Cmd(1)`.
-- **Transport:** GATT Write Without Response for requests, GATT Notifications for responses. UUIDs are in `bluetooth/connect.js`.
-- **Queued writes:** `writeValueWithoutResponse` throws if called while another is in flight. `SmpClient` handles this internally via `#enqueue` — direct access to the characteristic should not be needed.
-- **Timeout:** `SmpClient.send()` times out after 30s. The **reset command is expected to timeout** because the device disconnects immediately; callers should catch and ignore the timeout (see `resetDevice()` implementation).
-- **Seq tracking:** `seq` is an auto-incrementing `& 0xff` byte used to match requests with notifications.
-
-## DFU flow & slot states
+## DFU flow & slot states (SMP / MCUboot)
 
 The correct, safe sequence with MCUboot rollback protection is:
 
@@ -62,8 +74,31 @@ The correct, safe sequence with MCUboot rollback protection is:
 
 ## Testing
 
-- **Headless harness** (`tools/dfu-test.mjs`): reuses `smp/protocol.js` and `smp/image.js` to run the full DFU over real BLE from Node.js (uses `node-ble`). It does **not** test `bluetooth/connect.js` or the DOM. See `TESTING.md` for the full build/flash/test loop.
-- **Manual full-stack test:** requires Chrome + an nRF52840 DK running the `smp_svr` Zephyr sample with `--sysbuild` (builds MCUboot automatically). See `TESTING.md` for exact `west` commands.
+### Test layers
+
+1. **Headless SMP DFU** (`make test`) — fastest, covers the SMP protocol engine + node-ble transport. Does NOT test `bluetooth/connect.js` or the DOM.
+2. **Headless Nordic DFU** (`node tools/nordic-dfu-test.mjs <package.zip>`) — covers Nordic Secure DFU protocol engine.
+3. **Browser end-to-end** (`make browser-test` with `serve.py` running) — exercises the real DOM, Web Bluetooth GATT APIs, and the full UI flow via Puppeteer. See `TESTING.md` for prerequisites (Chrome Web Bluetooth flag).
+
+### Verification state
+
+- **SMP / MCUboot**: `make test` **passes** on nRF52840 DK. Device advertises as "Zephyr".
+- **Nordic Secure DFU**: `node tools/nordic-dfu-test.mjs <package.zip>` **passes** on nRF52840 DK with Nordic bootloader.
+
+### Firmware setup for SMP testing
+
+Use the `smp_svr` Zephyr sample with `--sysbuild` (builds MCUboot automatically). The firmware in `firmware/` is adapted from this sample.
+
+```bash
+# Build v1 baseline + v2 update
+make build    # builds firmware/build/ and firmware/build-v2/
+# Flash baseline + run headless SMP test
+make test     # flash baseline, run dfu-test.mjs with build-v2/zephyr.signed.bin
+```
+
+### Nordic test fixtures
+
+Reference bootloader hex and `.zip` packages from nRF5 SDK 17.1.0 are stored under the Nextcloud path (see global rules `ncs-nrfutil.md` for layout).
 
 ## External rules
 
