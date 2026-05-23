@@ -34,8 +34,7 @@ const serviceUuidInput= document.getElementById('service-uuid');
 
 // ── State ────────────────────────────────────────────────────────────────────
 
-let busy = false;
-let scanTimeoutId = null;
+let scanTimeoutId;
 
 // ── Controller event wiring ──────────────────────────────────────────────────
 
@@ -43,16 +42,13 @@ controller.addEventListener('firmware-loaded', (e) => {
   const { name, size, protocol } = e.detail;
   fileNameEl.textContent = name;
   fileSizeEl.textContent = `${(size / 1024).toFixed(1)} KB`;
-  chunkRow.style.display = '';
   showProtocol(protocol);
-  log(`Loaded ${name} (${(size / 1024).toFixed(1)} KB)`, 'ok');
   updateDfuButton();
 });
 
 controller.addEventListener('firmware-unloaded', () => {
   fileNameEl.textContent = '';
   fileSizeEl.textContent = '';
-  chunkRow.style.display = 'none';
   showProtocol(null);
   updateDfuButton();
 });
@@ -64,8 +60,6 @@ controller.addEventListener('connected', (e) => {
   configureUi(capabilities);
   showConnected(true);
   clearScanTimeout();
-  // For SMP: immediately read slots so checkPending() runs and the confirm
-  // button appears when a post-reboot image is active but unconfirmed.
   if (capabilities.hasSlots) {
     controller.refreshSlots().catch((err) => log(err.message, 'error'));
   }
@@ -89,6 +83,18 @@ controller.addEventListener('progress', (e) => {
 });
 
 controller.addEventListener('phase', (e) => setPhase(e.detail.label));
+
+controller.addEventListener('state-changed', (e) => {
+  const { state } = e.detail;
+  const isBusy = ['connecting', 'uploading', 'confirming', 'disconnecting'].includes(state);
+  fileLabel.classList.toggle('disabled', isBusy);
+  fileInput.disabled  = isBusy;
+  btnConnect.disabled = isBusy || state === 'connected';
+  btnRefresh.disabled = isBusy;
+  btnDisconnect.disabled = isBusy;
+  chunkSizeInput.disabled = isBusy;
+  updateDfuButton();
+});
 
 controller.addEventListener('needs-reconnect', () => {
   log('Device rebooted. Please click Reconnect when it advertises again.', 'warn');
@@ -121,7 +127,7 @@ function log(text, level = 'info') {
   const ts = new Date().toLocaleTimeString();
   const el = document.createElement('div');
   el.className = `log-${level}`;
-  el.innerHTML = `\u003cspan class="log-ts"\u003e${ts}\u003c/span\u003e${text}`;
+  el.innerHTML = `<span class="log-ts">${ts}</span>${text}`;
   logEntries.appendChild(el);
   logEntries.scrollTop = logEntries.scrollHeight;
   console.log(`[${level.toUpperCase()}] ${text}`);
@@ -129,24 +135,17 @@ function log(text, level = 'info') {
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
-function setBusy(state) {
-  busy = state;
-  fileLabel.classList.toggle('disabled', state);
-  fileInput.disabled  = state;
-  btnConnect.disabled = state;
-  btnRefresh.disabled = state;
-  btnDisconnect.disabled = state;
-  chunkSizeInput.disabled = state;
-  updateDfuButton();
+function isBusyState() {
+  return ['connecting', 'uploading', 'confirming', 'disconnecting'].includes(controller.state);
 }
 
 function updateDfuButton() {
-  btnDfu.disabled = busy || !controller.hasFirmware || !controller.hasProvider;
+  btnDfu.disabled = isBusyState() || !controller.hasFirmware || !controller.hasProvider;
 }
 
 function updateConfirmButton(enabled) {
   btnConfirm.style.display = enabled ? '' : 'none';
-  btnConfirm.disabled = busy || !enabled;
+  btnConfirm.disabled = isBusyState() || !enabled;
 }
 
 function showConnected(isConnected) {
@@ -188,24 +187,24 @@ function configureUi(capabilities) {
 function renderSlots(slots) {
   slotsEl.innerHTML = '';
   if (!slots || !slots.length) {
-    slotsEl.innerHTML = '\u003cdiv class="slot"\u003e\u003cem\u003eNo slot information available\u003c/em\u003e\u003c/div\u003e';
+    slotsEl.innerHTML = '<div class="slot"><em>No slot information available</em></div>';
     return;
   }
   for (const s of slots) {
     const badges = [
-      s.active    ? '\u003cspan class="badge badge-green"\u003eactive\u003c/span\u003e'    : '',
-      s.pending   ? '\u003cspan class="badge badge-yellow"\u003epending\u003c/span\u003e'  : '',
-      s.confirmed ? '\u003cspan class="badge badge-blue"\u003econfirmed\u003c/span\u003e'  : '',
+      s.active    ? '<span class="badge badge-green">active</span>'    : '',
+      s.pending   ? '<span class="badge badge-yellow">pending</span>'  : '',
+      s.confirmed ? '<span class="badge badge-blue">confirmed</span>'  : '',
     ].join('');
     const el = document.createElement('div');
     el.className = 'slot';
     el.innerHTML = `
-      \u003cdiv class="slot-top"\u003e
-        \u003cspan class="slot-label"\u003eSlot ${s.slot}\u003c/span\u003e
-        \u003cspan class="slot-version"\u003e${s.version}\u003c/span\u003e
-        \u003cdiv class="badges"\u003e${badges}\u003c/div\u003e
-      \u003c/div\u003e
-      \u003cdiv class="slot-hash"\u003e${s.hash}\u003c/div\u003e`;
+      <div class="slot-top">
+        <span class="slot-label">Slot ${s.slot}</span>
+        <span class="slot-version">${s.version}</span>
+        <div class="badges">${badges}</div>
+      </div>
+      <div class="slot-hash">${s.hash}</div>`;
     slotsEl.appendChild(el);
   }
 }
@@ -271,7 +270,6 @@ filterToggle.addEventListener('click', () => {
 scanAllCheck.addEventListener('change', () => {
   saveCurrentFilters();
   if (!scanAllCheck.checked) {
-    // If user unchecked "scan all", auto-expand the panel so they can set filters
     filterToggle.setAttribute('aria-expanded', 'true');
     updateFilterPanelVisibility();
   }
@@ -306,18 +304,12 @@ function clearScanTimeout() {
 // ── Connect ─────────────────────────────────────────────────────────────────
 
 btnConnect.addEventListener('click', async () => {
-  setBusy(true);
-  btnConnect.textContent = 'Connecting…';
   startScanTimeout();
-
   try {
     await controller.connect(getFilterConfig());
   } catch (err) {
     log(err.message, 'error');
     showConnected(false);
-  } finally {
-    btnConnect.textContent = 'Scan & Connect';
-    setBusy(false);
   }
 });
 
@@ -331,15 +323,12 @@ btnDisconnect.addEventListener('click', () => {
 // ── Refresh slots ──────────────────────────────────────────────────────────
 
 btnRefresh.addEventListener('click', async () => {
-  setBusy(true);
   try { await controller.refreshSlots(); } catch (err) { log(err.message, 'error'); }
-  finally { setBusy(false); }
 });
 
 // ── DFU ────────────────────────────────────────────────────────────────────────
 
 btnDfu.addEventListener('click', async () => {
-  setBusy(true);
   btnDfu.textContent = 'Updating…';
   progressWrap.style.display = '';
 
@@ -350,7 +339,6 @@ btnDfu.addEventListener('click', async () => {
     btnDfu.textContent = 'Update Firmware';
   } finally {
     setProgress(0, 0);
-    setBusy(false);
     updateDfuButton();
   }
 });
@@ -358,7 +346,6 @@ btnDfu.addEventListener('click', async () => {
 // ── Confirm ─────────────────────────────────────────────────────────────────
 
 btnConfirm.addEventListener('click', async () => {
-  setBusy(true);
   btnConfirm.textContent = 'Confirming…';
   try {
     await controller.confirm();
@@ -368,7 +355,6 @@ btnConfirm.addEventListener('click', async () => {
     log(err.message, 'error');
     btnConfirm.textContent = 'Confirm Update';
   } finally {
-    setBusy(false);
     updateDfuButton();
   }
 });
@@ -385,8 +371,6 @@ btnReconnect.addEventListener('click', async () => {
   } catch (err) {
     log(err.message, 'error');
     btnReconnect.disabled = false;
-  } finally {
-    setBusy(false);
   }
 });
 
