@@ -6,7 +6,17 @@ export const SMP_CHAR_UUID        = 'da2e7828-fbce-4e01-ae9e-261174997c48';
 /** Connect to the first available BLE device advertising any supported service. */
 export async function connectToDevice(onDisconnect) {
   if (!navigator.bluetooth) {
-    throw new Error('Web Bluetooth not available — use Chrome on desktop or Android.');
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isHTTP = window.location.protocol !== 'https:';
+    let msg = 'Web Bluetooth not available';
+    if (isIOS) {
+      msg += ' — iOS/iPadOS does not support Web Bluetooth in any browser. Use Android or desktop Chrome.';
+    } else if (isHTTP) {
+      msg += ' — this page is served over HTTP. Web Bluetooth requires HTTPS or localhost. Reload over HTTPS.';
+    } else {
+      msg += ' — use Chrome on Android, Windows, macOS, or Linux. Ensure chrome://flags/#enable-web-bluetooth-new-permissions-backend is enabled.';
+    }
+    throw new Error(msg);
   }
 
   const filters = [
