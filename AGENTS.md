@@ -1,135 +1,74 @@
-# web-smp-dfu — project rules
+# web-smp-dfu — agent guidance
 
 Browser-based MCUboot DFU updater for Zephyr/NCS devices. Vanilla HTML + ES modules, no build step, no runtime npm dependencies.
 
-## Stack constraints
+## Architecture constraints
 
-- **Vanilla ES modules**, no framework, no bundler. See `web-bluetooth-smp.md` rule for the rationale.
-- **CBOR via `vendor/cbor-x.js`** (vendored, regeneration command in README).
-- **Web Bluetooth API** for transport. No serial, no USB, no WebSocket fallback.
-- Target browsers: Chrome/Edge desktop and Chrome Android. Don't add Safari/Firefox workarounds — Web Bluetooth isn't supported there.
+- **No build step.** The browser loads modules directly. Do not add a bundler (webpack, Vite, esbuild), transpiler, or framework (React, Vue, Svelte).
+- **No runtime npm dependencies.** If a library is needed, vendor it as a single ES module in `vendor/`. The current CBOR library (`vendor/cbor-x.js`) was generated with `esbuild` from `cbor-x` — see README for the exact command.
+- **HTTPS or localhost only.** Web Bluetooth requires a secure context. The README documents the Chrome flag for local HTTP (`unsafely-treat-insecure-origin-as-secure`).
+
+## CBOR gotcha
+
+The MCUboot `zcbor` decoder on the device rejects cbor-x's default "records" tag and tagged `Uint8Array`s.
+
+```js
+const cbor = new Encoder({ useRecords: false, tagUint8Array: false });
+```
+
+Always instantiate `Encoder` with these flags before encoding SMP payloads, or the device will silently fail to parse.
 
 ## Project layout
-index.html            — UI (HTML + CSS inline, no framework)
-app.js                — UI logic and DFU orchestration
-bluetooth/connect.js  — Web Bluetooth connect / disconnect
-smp/protocol.js       — SMP frame encoding, CBOR, write queue (SmpClient class)
-smp/image.js          — DFU operations: validateImage, listImages, uploadFirmware,
-testImage, confirmImage, resetDevice
-vendor/cbor-x.js      — vendored CBOR library
 
-When adding new SMP operations, put the wire-level command in `smp/protocol.js` (Op/Group/Cmd constants) and the high-level helper in `smp/image.js` (or a new `smp/<group>.js` if a new group is added).
+| File | Responsibility |
+|---|---|
+| `index.html` | DOM, inline CSS, no framework |
+| `app.js` | UI orchestration and DFU state machine |
+| `bluetooth/connect.js` | `navigator.bluetooth` device picker, GATT connect/disconnect |
+| `smp/protocol.js` | `SmpClient` — SMP header encoding, CBOR, notification parsing, **write queue** |
+| `smp/image.js` | High-level DFU ops: `validateImage`, `listImages`, `uploadFirmware`, `testImage`, `confirmImage`, `resetDevice` |
+| `vendor/cbor-x.js` | Vendored CBOR library only |
 
-## Scope
+**Rule for new SMP operations:** wire-level constants (Op/Group/Cmd IDs) go in `smp/protocol.js`; high-level helpers go in `smp/image.js` (or `smp/<group>.js` if adding a new group).
 
-In scope:
-- Full upload → test → reset → reconnect → confirm DFU flow on **nRF52840 DK**.
-- Per-step status visible in the UI (slot state, progress, rc codes).
-- Rollback handling: if user disconnects before confirming, the UI on next connect must reflect "pending — will revert".
+## SMP protocol quirks
 
-Out of scope (don't add unless asked):
-- nRF5340 dual-image / net-core DFU.
-- Custom file formats (only MCUboot-signed `.bin`).
-- Server-side anything — this is fully static.
+- **Header:** 8 bytes big-endian: `Op(1) | Flags(1) | Length(2) | Group(2) | Seq(1) | Cmd(1)`.
+- **Transport:** GATT Write Without Response for requests, GATT Notifications for responses. UUIDs are in `bluetooth/connect.js`.
+- **Queued writes:** `writeValueWithoutResponse` throws if called while another is in flight. `SmpClient` handles this internally via `#enqueue` — direct access to the characteristic should not be needed.
+- **Timeout:** `SmpClient.send()` times out after 30s. The **reset command is expected to timeout** because the device disconnects immediately; callers should catch and ignore the timeout (see `resetDevice()` implementation).
+- **Seq tracking:** `seq` is an auto-incrementing `& 0xff` byte used to match requests with notifications.
 
-## Testing the device side
+## DFU flow & slot states
 
-Reference firmware is the `smp_svr` Zephyr sample. See TESTING.md for the exact build commands. Image version is bumped via `CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION` to verify the swap visually.
+The correct, safe sequence with MCUboot rollback protection is:
 
-# nRF Connect SDK — Knowledge Lookup Rules
+1. **Upload** to slot 1.
+2. **Test** the uploaded image (slot 1 → `pending`).
+3. **Reset** the device (expect timeout / disconnect).
+4. **Reconnect** after ~5s.
+5. **Confirm** the new image in slot 0.
 
-The nRF Connect SDK is installed at `~/ncs/`. The exact version directory
-varies (e.g. `~/ncs/v2.7.0/`). Resolve it with:
-  ls -d ~/ncs/v*/ | sort -V | tail -1
+### Slot semantics after each step
 
-Treat the installed source tree as the authoritative reference. Do NOT
-guess at Kconfig symbols, devicetree compatibles, or API signatures —
-grep the source. The web docs are a JavaScript SPA and cannot be fetched.
+| Step | Slot 0 | Slot 1 |
+|---|---|---|
+| Initial (fresh) | `active + confirmed` | empty |
+| After upload + test | `active + confirmed` | `pending` |
+| After reset (swap done) | `active + pending` (new image) | old image |
+| After confirm | `active + confirmed` (new image) | old image |
 
-## Kconfig discovery
+**Critical:** if the user disconnects after step 3 (reset) but before step 5 (confirm), the next reboot will revert to the old image. The UI must surface this as "pending — will revert on reboot" (see `checkPending()` in `app.js`).
 
-Every CONFIG_FOO is defined in a `Kconfig*` file with format:
-    config FOO
-        bool "Short description"
-        default n
-        depends on BAR
-        help
-          Multi-line help text explaining the option.
+## Testing
 
-Workflow when you need a Kconfig symbol:
-  1. Grep for the symbol definition (NOT just usages):
-       grep -rn "^config FOO\b" ~/ncs/v*/nrf ~/ncs/v*/zephyr ~/ncs/v*/modules
-  2. View the surrounding Kconfig block to read the help text and deps.
-  3. If searching by topic, grep `Kconfig*` files for keywords:
-       grep -rn -i "lte modem" ~/ncs/v*/nrf --include="Kconfig*"
+- **Headless harness** (`tools/dfu-test.mjs`): reuses `smp/protocol.js` and `smp/image.js` to run the full DFU over real BLE from Node.js (uses `node-ble`). It does **not** test `bluetooth/connect.js` or the DOM. See `TESTING.md` for the full build/flash/test loop.
+- **Manual full-stack test:** requires Chrome + an nRF52840 DK running the `smp_svr` Zephyr sample with `--sysbuild` (builds MCUboot automatically). See `TESTING.md` for exact `west` commands.
 
-When the user has a built project, prefer the resolved config:
-  build/zephyr/.config           — final merged config (post-Kconfig)
-  build/zephyr/include/generated/zephyr/autoconf.h
-These show what is ACTUALLY enabled, vs. what is merely declared.
+## External rules
 
-For interactive exploration of available options for a given app/board:
-    west build -t menuconfig
-    west build -t guiconfig
-Only suggest these to the user; do not run them headlessly.
+Per-repo NCS/Zephyr lookup conventions and Web Bluetooth + SMP protocol rules are stored in global opencode rule files referenced by `opencode.json`:
+- `~/.config/opencode/rules/ncs-nrfutil.md`
+- `~/.config/opencode/rules/web-bluetooth-smp.md`
 
-## Devicetree
-
-Bindings (the "schema" for `compatible = "..."` strings) live in:
-  ~/ncs/v*/zephyr/dts/bindings/    — upstream
-  ~/ncs/v*/nrf/dts/bindings/       — Nordic-specific
-  ~/ncs/v*/modules/**/dts/bindings/ — module-provided
-
-To find a binding by compatible string:
-  grep -rln 'compatible: *"nordic,nrf-spim"' ~/ncs/v*/{zephyr,nrf,modules}/dts/bindings
-
-Board DTS files: ~/ncs/v*/{zephyr,nrf}/boards/**/*.dts
-SoC-level DTSI:  ~/ncs/v*/{zephyr,nrf}/dts/
-
-For a built project, the merged/resolved devicetree is at:
-  build/zephyr/zephyr.dts             — full resolved DT (very useful)
-  build/zephyr/include/generated/zephyr/devicetree_generated.h
-
-When suggesting a node, always check the binding's `properties:` block
-for required vs. optional fields.
-
-## Headers / APIs
-
-Public Zephyr headers:  ~/ncs/v*/zephyr/include/zephyr/
-Public Nordic headers:  ~/ncs/v*/nrf/include/
-nrfxlib headers:        ~/ncs/v*/nrfxlib/**/include/
-HAL (nrfx):             ~/ncs/v*/modules/hal/nordic/nrfx/
-
-Doxygen comments in the headers are typically more current than the
-rendered docs. When asked "how do I use X", grep the header for the
-function declaration and read the surrounding /** ... */ block.
-
-## Samples — the best learning resource
-
-  ~/ncs/v*/nrf/samples/        — Nordic samples (start here)
-  ~/ncs/v*/nrf/applications/   — fuller reference apps
-  ~/ncs/v*/zephyr/samples/     — upstream Zephyr samples
-
-When the user asks "how do I do X", search samples for a working
-example before writing one from scratch:
-  grep -rln "<api or kconfig>" ~/ncs/v*/nrf/samples ~/ncs/v*/zephyr/samples
-
-Each sample has a `prj.conf`, `sample.yaml`, and often board-specific
-overlays in `boards/`. These are concrete, working references.
-
-## Doc sources (RST/MD)
-
-The web docs are unreachable, but their source lives at:
-  ~/ncs/v*/nrf/doc/nrf/         — nRF Connect SDK docs source
-  ~/ncs/v*/zephyr/doc/          — Zephyr docs source
-Grep these as a fallback for conceptual/overview content that isn't
-captured in code comments.
-
-## What NOT to do
-
-- Don't fabricate Kconfig symbol names. If you cannot grep it, say so.
-- Don't propose a `compatible` string without confirming a binding exists.
-- Don't web-search for nRF Connect SDK docs — fetches will fail or
-  return empty. Use the local tree.
-- Don't suggest API calls without verifying the function exists in a
-  header in the local tree.
+Do not duplicate NCS Kconfig/devicetree lookup workflows here — extend the global rules if they need updating.
