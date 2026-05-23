@@ -10,8 +10,8 @@
 
 ## Automated harness (headless, no browser)
 
-`tools/dfu-test.mjs` runs the full DFU over real BLE and reuses the app's own
-`smp/protocol.js` + `smp/image.js` — so it tests the shipped protocol code, not
+`tools/dfu-test.mjs` runs the full SMP DFU over real BLE and reuses the app's own
+`smp/smp-provider.js` + `smp/mcumgr.js` — so it tests the shipped protocol code, not
 a reimplementation. It does **not** cover `bluetooth/connect.js` or the DOM;
 use the manual Chrome steps below for those.
 
@@ -36,7 +36,7 @@ version as what's running) — it must exit non-zero, since no swap is observabl
 
 The steps below exercise the browser path the harness skips.
 
-## Step 1 — Flash the initial firmware
+### Step 1 — Flash the initial firmware
 
 Build the `smp_svr` sample — this is a Zephyr sample specifically for testing SMP/mcumgr over BLE. The `--sysbuild` flag makes NCS build MCUboot alongside the app automatically.
 
@@ -52,7 +52,7 @@ The device will advertise as **"Zephyr"** over BLE.
 
 ---
 
-## Step 2 — Build the update image
+### Step 2 — Build the update image
 
 Bump the version number so you can confirm the swap worked after DFU.
 
@@ -71,7 +71,7 @@ build/zephyr/zephyr.signed.bin
 
 ---
 
-## Step 3 — Serve the web app
+### Step 3 — Serve the web app
 
 ```bash
 cd path/to/web-smp-dfu
@@ -86,25 +86,55 @@ Web Bluetooth requires HTTPS. For local HTTP, enable this Chrome flag:
 
 ---
 
-## Step 4 — Run the DFU
+### Step 4 — Run the DFU
 
 1. Open `http://localhost:8080` in Chrome
-2. Click **Choose .bin file** → select `build/zephyr/zephyr.signed.bin`
+2. Click **Choose file** → select `build/zephyr/zephyr.signed.bin`
 3. Click **Scan & Connect** → pick "Zephyr" from the browser device picker
-4. App reads image slots — slot 0 should show `1.0.0`
-5. Click **Flash Firmware**
+4. App auto-detects SMP protocol and reads image slots — slot 0 should show `1.0.0`
+5. Click **Update Firmware**
 6. Watch the progress bar and log panel
 7. Device resets automatically when upload + marking is done
 
 ---
 
-## Step 5 — Verify
+### Step 5 — Verify
 
 After the device reboots (~5 seconds):
 
 1. Click **Scan & Connect** again
 2. Click **Refresh slots**
 3. Slot 0 should now show `2.0.0` and be marked **active + confirmed**
+
+---
+
+## Nordic Secure DFU verification
+
+### Structural (no hardware)
+
+Feed each `.zip` package to `nordic/package.js` and assert the manifest parses:
+
+```bash
+node -e "
+import JSZip from './vendor/jszip.mjs';
+import { SecureDfuPackage } from './nordic/package.js';
+const buf = await Bun.file('path/to/package.zip').arrayBuffer();
+const pkg = new SecureDfuPackage(buf);
+await pkg.load(JSZip);
+console.log('manifest', pkg.manifest);
+const img = await pkg.getAppImage();
+console.log('app image', img.type, img.initFile, img.imageFile);
+"
+```
+
+### Hardware (nRF52840 DK)
+
+Flash the DK with a Nordic Secure DFU bootloader baseline from SDK 17.1.0:
+`sd_s140_bootloader_buttonless_with_setting_page_dfu_secure_ble_debug_without_bonds.hex`.
+
+Pick the matching `.zip` (e.g. `ble_app_buttonless_dfu_without_bonds_s140.zip`),
+connect in Chrome, and confirm the transfer completes. The buttonless flow will
+prompt for reconnect after the device reboots into bootloader mode.
 
 ---
 
@@ -124,7 +154,7 @@ If you see timeouts or no `← rx` entries, the device is not responding to SMP.
 
 ### Sanity check — confirm device side works before blaming the web app
 
-**Option A — nRF Connect app (Android/iOS):**  
+**Option A — nRF Connect app (Android/iOS):**
 Install Nordic's nRF Connect app → connect to the device → Device → DFU tab. If this can DFU the device, the device firmware is correct and the issue is in the web app.
 
 **Option B — mcumgr CLI:**
@@ -160,3 +190,4 @@ The sniffer decodes SMP frames inside GATT notifications — you can see exactly
 | Upload completes but device doesn't reboot | `testImage` or `resetDevice` failed | Check DevTools console for rc codes |
 | After reboot, slot 0 still shows `1.0.0` | MCUboot swap failed — image hash mismatch or image not valid | Make sure you're uploading `zephyr.signed.bin` not `zephyr.bin` |
 | `Bad MCUboot magic` error in UI | Wrong file selected | Use `build/zephyr/zephyr.signed.bin`, not the `.hex` or unsigned `.bin` |
+| Legacy DFU hard-stop message | Device advertises `0x1530` service | Upgrade to Secure DFU bootloader |

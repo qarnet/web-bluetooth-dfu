@@ -1,7 +1,8 @@
-# web-smp-dfu
+# BLE DFU
 
-Browser-based firmware updater for nRF Connect SDK devices over Bluetooth LE.  
-Uses the [Web Bluetooth API](https://developer.mozilla.org/en-US/docs/Web/API/Web_Bluetooth_API) and the [SMP / mcumgr](https://docs.zephyrproject.org/latest/services/device_mgmt/smp_protocol.html) protocol.
+Browser-based firmware updater for nRF devices over Bluetooth LE.
+Supports **SMP / MCUboot** (Zephyr / nRF Connect SDK) and **Nordic Secure DFU**
+(nRF5 SDK) protocols with automatic detection.
 
 No installation. No build step. Open the page, pick a file, flash.
 
@@ -21,7 +22,9 @@ HTTPS is required (Web Bluetooth restriction). See [Running locally](#running-lo
 
 ## Device requirements
 
-Your firmware must be built with MCUboot and mcumgr BLE transport enabled.  
+### SMP / MCUboot (Zephyr / NCS)
+
+Your firmware must be built with MCUboot and mcumgr BLE transport enabled.
 Add to your `prj.conf`:
 
 ```kconfig
@@ -32,26 +35,29 @@ CONFIG_MCUMGR_GRP_IMG=y
 CONFIG_MCUMGR_GRP_OS=y
 ```
 
-The firmware file to upload is `build/zephyr/zephyr.signed.bin` — the MCUboot-signed binary produced by the NCS build system.
+The firmware file to upload is `build/zephyr/zephyr.signed.bin` — the MCUboot-signed binary.
+
+### Nordic Secure DFU (nRF5 SDK)
+
+Requires a bootloader built with Secure DFU. Upload `.zip` packages produced by
+nRF Connect / nrfutil (single-application packages first; multi-image is
+architected but not yet fully verified).
 
 ---
 
 ## DFU flow
 
-1. Select your `zephyr.signed.bin` file — the app validates the MCUboot header magic before upload
-2. Click **Scan & Connect** — browser shows a BLE device picker filtered to SMP devices
-3. After connecting, the app reads the current image slots from the device
-4. Click **Flash Firmware** — the app:
-   - Uploads the firmware in chunks to slot 1
-   - Marks the new image for test (`image test`)
-   - Resets the device
-   - MCUboot swaps the images and boots the new firmware
+1. Select your firmware file (`.bin` for SMP, `.zip` for Nordic) — the app validates format before upload
+2. Click **Scan & Connect** — browser shows a BLE device picker filtered to supported devices
+3. After connecting, the app auto-detects the protocol from the device's advertised services
+4. Click **Update Firmware** — the provider runs its protocol-specific sequence:
+   - **SMP:** uploads to slot 1 → marks for test → resets → reconnect to confirm
+   - **Nordic:** transfers init packet → transfers firmware → device reboots automatically
 
-Reconnect after reboot to verify the new version in slot 0.
+### SMP chunk size
 
-### Chunk size
-
-Default is 128 bytes per SMP packet — safe for all MTU sizes. If your device negotiates a larger MTU (247 bytes is typical for nRF with NCS defaults), you can increase chunk size up to 244 bytes for faster transfers.
+Default is 128 bytes per SMP packet — safe for all MTU sizes. You can increase
+chunk size up to 244 bytes for faster transfers.
 
 | MTU | Chunk | Throughput | 256 KB image |
 |---|---|---|---|
@@ -87,17 +93,31 @@ caddy file-server --root . --listen :8080 --access-log
 
 ```
 index.html            — UI (HTML + CSS, no framework)
-app.js                — UI logic and DFU orchestration
+app.js                — Provider-agnostic UI driver
+core/
+  events.js           — EventTarget base for providers
+  provider.js         — DfuProvider base class + capability contract
+  registry.js         — Static table of known providers (UUIDs, file matchers)
+  detect.js           — Device + file detection, conflict resolution
 bluetooth/
-  connect.js          — Web Bluetooth connect / disconnect
+  connect.js          — Generalized Web Bluetooth wrapper (multi-service)
 smp/
-  protocol.js         — SMP frame encoding, CBOR, write queue
-  image.js            — Image upload, list, test, confirm, reset
+  cbor.js             — Minimal CBOR encoder/decoder (ported from mcumgr-web)
+  mcumgr.js           — SMP protocol engine (transport-decoupled)
+  smp-provider.js     — DfuProvider adapter for SMP/MCUboot
+nordic/
+  secure-dfu.js       — Nordic Secure DFU transfer engine (ported from web-bluetooth-dfu)
+  package.js           — .zip parser for Nordic DFU packages
+  nordic-provider.js  — DfuProvider adapter for Nordic Secure DFU
 vendor/
-  cbor-x.js           — Vendored CBOR library (bundled from cbor-x, no npm needed at runtime)
+  jszip.mjs            — Vendored JSZip ESM bundle
+  crc-32.js            — Vendored CRC-32 ESM bundle
+tools/
+  ble-characteristic.mjs — node-ble ↔ Web Bluetooth adapter
+  dfu-test.mjs         — Headless SMP DFU test harness (node-ble)
 ```
 
-**Dependencies at runtime:** none beyond `vendor/cbor-x.js`.  
+**Dependencies at runtime:** none beyond `vendor/`.  
 **No build step required.**
 
 ---
@@ -112,14 +132,40 @@ vendor/
 | Responses | GATT Notifications |
 | Payload encoding | CBOR |
 
+## Nordic Secure DFU / BLE details
+
+| Item | Value |
+|---|---|
+| GATT Service UUID | `FE59` (Nordic DFU) |
+| Control Point UUID | `8EC90001-F315-4F60-9FB8-838830DAEA50` |
+| Packet UUID | `8EC90002-F315-4F60-9FB8-838830DAEA50` |
+| Buttonless (no bonds) | `8EC90003-F315-4F60-9FB8-838830DAEA50` |
+| Buttonless (with bonds) | `8EC90004-F315-4F60-9FB8-838830DAEA50` |
+| Packet writes | GATT Write Without Response |
+| Control writes | GATT Write With Response |
+| Payload | `.zip` package (init packet + firmware) |
+
 ---
 
-## Regenerating vendor/cbor-x.js
+## Vendored dependencies
 
-Only needed if you want to update the CBOR library version:
+Regenerate with esbuild (dev machine only — not a runtime build step):
 
 ```bash
-npm install cbor-x
-npx esbuild node_modules/cbor-x/index.js --bundle --format=esm --minify --outfile=vendor/cbor-x.js
+npm install jszip
+npx esbuild node_modules/jszip/dist/jszip.min.js --bundle --format=esm --minify --outfile=vendor/jszip.mjs
 rm -rf node_modules package*.json
 ```
+
+```bash
+npm install crc-32
+# Edit vendor/crc-32.js to export { CRC32 } from a hand-rolled ES module, or
+# bundle via esbuild if the package gains a clean ESM entry.
+rm -rf node_modules package*.json
+```
+
+---
+
+## Testing
+
+See `TESTING.md` for the full build/flash/test loop and manual Chrome verification.

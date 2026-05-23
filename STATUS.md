@@ -2,40 +2,32 @@
 
 ## What's done
 
-### 1. Firmware adapted from NCS sample
-- **Source**: `nrf/samples/dfu/smp_svr` from nRF Connect SDK v3.3.0 (`~/ncs/v3.3.0`)
-- **Location**: `firmware/` (`CMakeLists.txt`, `prj.conf`, `Kconfig.sysbuild`,
-  `sysbuild.conf`, `sysbuild/mcuboot/prj.conf`, `src/main.c`, `src/bluetooth.c`,
-  `src/common.h`)
-- **Config highlights**: BLE SMP transport, large MTU (498), packet reassembly,
-  MCUboot swap mode, image-management + OS-reset groups, shell transport fallback.
+### Dual-protocol DFU engine
+The app now supports **both** SMP/MCUboot (Zephyr/NCS) and Nordic Secure DFU
+(nRF5 SDK legacy) via a single provider-agnostic UI. The protocol is
+auto-detected from the file magic and the BLE GATT services discovered on the
+device.
 
-### 2. Built for nRF52840 DK (`PCA10056`)
-- v1 baseline → `firmware/build/` (image version `0.0.0+0`)
-- v2 update → `firmware/build-v2/` (image version `2.0.0`)
-- MCUboot magic verified on both `zephyr.signed.bin` files.
+### 1. SMP / MCUboot path (Zephyr/NCS)
+- **Firmware**: `firmware/` — adapted from `nrf/samples/dfu/smp_svr` (NCS v3.3.0)
+- **Built**: v1 baseline in `firmware/build/`, v2 update in `firmware/build-v2/`
+- **Verified**: `make test` passes — full upload → test → reset → swap → confirm
+- **Modules**: `smp/protocol.js`, `smp/image.js`, `core/provider.js`
 
-### 3. Flashed the device
-- `nrfutil device program --firmware firmware/build/merged.hex --traits jlink`
-- Device runs the SMP server, advertises as **"Zephyr"** over BLE.
+### 2. Nordic Secure DFU path (legacy nRF5 SDK)
+- **Reference hex**: `sd_s140_bootloader_buttonless_with_setting_page_dfu_secure_ble_debug_without_bonds.hex`
+- **Test package**: `ble_app_buttonless_dfu_without_bonds_s140.zip`
+- **Verified**: `node tools/nordic-dfu-test.mjs <package.zip>` passes — full
+  buttonless trigger → bootloader reconnect → init packet → firmware transfer
+- **Modules**: `nordic/secure-dfu.js`, `nordic/package.js`, `nordic/nordic-provider.js`
 
-### 4. Automated A→B→C→D workflow
-A headless test harness now runs the full DFU over real BLE — no browser, no
-manual steps. It reuses the app's actual `smp/protocol.js` + `smp/image.js`
-modules over a node-ble transport, so the test exercises the shipped protocol
-code. See `tools/dfu-test.mjs` and the `Makefile`.
-
-| Step | Command | What it does |
-|---|---|---|
-| **A** Write code | — | edit `firmware/src/*` or `smp/*.js` |
-| **B** Compile | `make build` | west builds v1 + v2 images |
-| **C** Flash | `make flash` | flash the v1 baseline |
-| **D** Test | `make test` | re-flash baseline, run the BLE DFU harness |
-| Full loop | `make dfu` | B + D |
-
-The harness asserts: device boots the baseline → upload v2 → mark for test →
-reset → MCUboot swaps → slot 0 reports v2 `active` → confirm → slot 0
-`confirmed`. Exit code 0 = pass.
+### 3. Shared infrastructure
+- `core/detect.js` — auto-detects protocol from file + device services
+- `core/provider.js` — `DfuProvider` base class with capability flags
+- `core/registry.js` — central UUID registry for both protocols
+- `vendor/crc32.js` — correct CRC-32 implementation matching Nordic firmware
+- `vendor/jszip.js` — vendored ZIP parser for Nordic packages
+- `app.js` / `index.html` — single UI that adapts its flow to the detected protocol
 
 ---
 
@@ -72,7 +64,7 @@ from Windows, then `sudo modprobe -r btusb && sudo modprobe btusb`.
   chunking, the full DFU sequence). It does **not** exercise
   `bluetooth/connect.js` (`navigator.bluetooth`) or the DOM — verify those
   manually in Chrome per `TESTING.md`.
-- Known gap surfaced while building the harness: `app.js`'s DFU flow stops
-  after `resetDevice` and never calls `confirmImage`, so a real browser DFU
-  would revert on the next reboot. The harness does confirm. Fixing `app.js`
-  to confirm post-reboot is a candidate follow-up.
+- Browser flow now handles confirmation: after reconnecting post-reset, if
+  slot 0 shows `active + pending`, a "Confirm Update" button is surfaced.
+  Clicking it sends `image confirm`, making the swap permanent and preventing
+  MCUboot rollback.
