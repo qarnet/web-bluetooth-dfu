@@ -198,7 +198,7 @@ Three test layers are available:
 
 1. **Headless SMP DFU** (`make test`) — fastest, runs in CI, covers the SMP protocol engine.
 2. **Headless Nordic DFU** (`node tools/nordic-dfu-test.mjs <package.zip>`) — covers Nordic Secure DFU protocol engine.
-3. **Browser end-to-end** (`make browser-test` with `serve.py` running) — exercises the real DOM, Web Bluetooth, and the full UI flow.
+3. **Browser end-to-end** (`make browser-test` or `make browser-test-headless` with `serve.py` running) — exercises the real DOM, Web Bluetooth, and the full UI flow via Puppeteer. The `-headless` variant runs Chrome under `xvfb-run` for machines without a display.
 
 All tests require a real nRF52840 DK connected to the machine running the test.
 

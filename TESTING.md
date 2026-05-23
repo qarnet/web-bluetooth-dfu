@@ -63,15 +63,23 @@ DFU flow through the DOM.
    ```
    Puppeteer downloads its own Chrome binary automatically (~150 MB).
 
-3. **Chrome Web Bluetooth flag** (Linux only):
-   - Open `chrome://flags/#enable-web-bluetooth-new-permissions-backend`
-   - Set to **Enabled** and relaunch
+3. **Chrome Web Bluetooth flag** — the test script passes
+   `--enable-features=WebBluetoothNewPermissionsBackend` to Puppeteer's bundled
+   Chrome at launch (required on Linux). No manual `chrome://flags` step needed.
 
 ### SMP browser test
 
 ```bash
-make browser-test   # flashes baseline + runs the full browser DFU flow
+make browser-test            # headed Chrome (requires a display)
+make browser-test-headless   # same flow under Xvfb (no display required)
 ```
+
+Both targets flash the v1 baseline first, then drive the full DFU flow against
+the freshly-flashed device. The `-headless` variant wraps the node invocation
+in `xvfb-run` so it works on machines without an X server (CI, WSL2, headless
+Linux hosts). Web Bluetooth still requires a *headed* Chrome — `HEADLESS=1`
+toggles Puppeteer's headless mode, which disables Web Bluetooth entirely and
+will fail; use the Xvfb target instead.
 
 The test will:
 1. Open Chrome
@@ -112,10 +120,32 @@ node tools/nordic-browser-dfu-test.mjs path/to/package.zip
 
 ### Troubleshooting browser tests
 
-- **"Web Bluetooth unavailable"** — enable the Linux flag above, or you're not on HTTPS.
+- **"Web Bluetooth unavailable"** — Puppeteer didn't get the feature flag (older Chrome bundled with Puppeteer <120), or you ran with `HEADLESS=1` (true headless Chrome blocks Web Bluetooth). Make sure `tools/node_modules/puppeteer` is recent (`npm install` in `tools/`).
+- **"Upload failed: Bad state"** — the device is already in active-but-unconfirmed state from a prior run (MCUboot rejects new uploads). Run `make flash` (or `make browser-test-headless`, which flashes first) to reset to the baseline.
 - **Device picker times out** — the DK is not advertising. Power-cycle it.
 - **Screenshot on failure** — if the test fails, it saves `browser-test-failure.png` in the repo root.
-- **Multiple Chrome profiles** — Puppeteer launches a clean profile, so flags must be passed via `args` (already done). The Linux flag still needs to be set in the *system* Chrome once to register the preference, or set via `--enable-features=WebBluetoothNewPermissionsBackend` (Chrome 120+).
+
+### Running headless (no display) — Linux / CI / WSL2
+
+`make browser-test-headless` wraps the test in `xvfb-run`. Web Bluetooth requires
+a *headed* Chrome, so the trick is: Xvfb gives Chrome a virtual X server, Chrome
+runs in graphical mode against it, and the BLE stack still talks to real BlueZ.
+
+Prerequisites:
+
+- `xvfb` (or `xvfb-run`) installed. On Nix/Home Manager: add `pkgs.xvfb-run` to
+  `home.packages` and `home-manager switch`. On Debian/Ubuntu: `apt install xvfb`.
+- `bluetoothd` running (`systemctl status bluetooth`) and a BLE adapter visible
+  as `hci0` (`bluetoothctl list`).
+- On WSL2, the BLE adapter must be attached via [usbipd-win](https://github.com/dorssel/usbipd-win):
+
+  ```powershell
+  # Windows administrator PowerShell
+  usbipd list                            # find the dongle's BUSID
+  usbipd attach --wsl --busid <BUSID>
+  ```
+
+  Inside WSL2, verify with `bluetoothctl show` — a controller should appear.
 
 ---
 
@@ -297,7 +327,8 @@ The sniffer decodes SMP frames inside GATT notifications — you can see exactly
 | After reboot, slot 0 still shows `1.0.0` | MCUboot swap failed — image hash mismatch or image not valid | Make sure you're uploading `zephyr.signed.bin` not `zephyr.bin` |
 | `Bad MCUboot magic` error in UI | Wrong file selected | Use `build/zephyr/zephyr.signed.bin`, not the `.hex` or unsigned `.bin` |
 | Legacy DFU hard-stop message | Device advertises `0x1530` service | Upgrade to Secure DFU bootloader |
-| Puppeteer "Web Bluetooth unavailable" | Linux flag not enabled | Enable `chrome://flags/#enable-web-bluetooth-new-permissions-backend` |
+| Puppeteer "Web Bluetooth unavailable" | Stale Puppeteer Chrome (<120) or `HEADLESS=1` set | `npm install` in `tools/`; never set `HEADLESS=1` for BLE flows |
+| Puppeteer "Upload failed: Bad state" | Slot 0 active+unconfirmed from prior run | `make flash` before re-running (or use `make browser-test-headless` which chains it) |
 | Puppeteer device chooser times out | DK not advertising or wrong name | Check `DEVICE_NAME` env var, power-cycle DK |
 
 (End of file - total 274 lines)

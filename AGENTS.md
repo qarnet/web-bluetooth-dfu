@@ -66,11 +66,13 @@ The correct, safe sequence with MCUboot rollback protection is:
 | Step | Slot 0 | Slot 1 |
 |---|---|---|
 | Initial (fresh) | `active + confirmed` | empty |
-| After upload + test | `active + confirmed` | `pending` |
-| After reset (swap done) | `active + pending` (new image) | old image |
+| After upload + test | `active + confirmed` | `pending` (trailer flag on secondary slot) |
+| After reset (swap done) | `active` only — new image, neither pending nor confirmed | old image |
 | After confirm | `active + confirmed` (new image) | old image |
 
-**Critical:** if the user disconnects after step 3 (reset) but before step 5 (confirm), the next reboot will revert to the old image. The UI must surface this as "pending — will revert on reboot" (see `checkPending()` in `app.js`).
+**Critical:** if the user disconnects after step 3 (reset) but before step 5 (confirm), the next reboot will revert to the old image. The UI must surface this as "active but unconfirmed — will revert on reboot" (see `checkPending()` in `app.js`).
+
+The MCUboot `pending` trailer flag lives on the *secondary* slot before the swap (meaning "swap me next boot") and is cleared once the swap completes. After the swap, the new primary is `active` but neither `pending` nor `confirmed` — `checkPending()` keys on `active && !confirmed`, not on the `pending` bit, to drive the Confirm Update button.
 
 ## Testing
 
@@ -78,7 +80,7 @@ The correct, safe sequence with MCUboot rollback protection is:
 
 1. **Headless SMP DFU** (`make test`) — fastest, covers the SMP protocol engine + node-ble transport. Does NOT test `bluetooth/connect.js` or the DOM.
 2. **Headless Nordic DFU** (`node tools/nordic-dfu-test.mjs <package.zip>`) — covers Nordic Secure DFU protocol engine.
-3. **Browser end-to-end** (`make browser-test` with `serve.py` running) — exercises the real DOM, Web Bluetooth GATT APIs, and the full UI flow via Puppeteer. See `TESTING.md` for prerequisites (Chrome Web Bluetooth flag).
+3. **Browser end-to-end** (`make browser-test` or `make browser-test-headless` with `serve.py` running) — exercises the real DOM, Web Bluetooth GATT APIs, and the full UI flow via Puppeteer. The `-headless` variant runs Chrome headed under `xvfb-run` so no display is required (Web Bluetooth itself does not work in true headless Chrome). See `TESTING.md` for prerequisites.
 
 ### Verification state
 

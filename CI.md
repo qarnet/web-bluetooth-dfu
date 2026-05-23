@@ -24,8 +24,8 @@ to whatever it's installed on.
 | `nrfutil` + nRF Command Line Tools | Flashing, recovery |
 | Zephyr / NCS workspace (`west init` + `west update`) | Building firmware |
 | Node.js 18+ | Test harness runtime |
-| Chrome (system install) | Required for `chrome://flags` persistence; Puppeteer ships its own binary too |
-| `enable-web-bluetooth-new-permissions-backend` Chrome flag enabled | Linux Web Bluetooth requirement |
+| Chrome (system install, optional) | Only needed for manual debugging on the host; Puppeteer ships its own bundled Chrome which the tests use |
+| `xvfb` / `xvfb-run` | Lets `make browser-test-headless` run Puppeteer Chrome on a headless host (Web Bluetooth needs a headed Chrome against a real or virtual X server) |
 | udev rules for stable DK device path | Prevents re-enumeration breaking flash step |
 
 Recovery hardening (important — BLE / DK state accumulates):
@@ -181,7 +181,8 @@ No structural changes to the workflow logic are needed.
 |---|---|---|
 | Runner offline mid-job | Power save, USB suspend | Disable USB autosuspend; keep host plugged in |
 | `nrfjprog: cannot find device` | DK renumerated | Add udev rules pinning serial → stable path |
-| Puppeteer "Web Bluetooth unavailable" | Chrome flag not persisted | Set flag in system Chrome, *then* register runner — Puppeteer inherits via `--enable-features` arg already in test |
+| Puppeteer "Web Bluetooth unavailable" | Stale bundled Chrome or `HEADLESS=1` set in env | Reinstall: `cd tools && npm install`; ensure `HEADLESS` is not exported. The test already passes `--enable-features=WebBluetoothNewPermissionsBackend` at launch |
+| `xvfb-run: command not found` on headless host | Xvfb not installed | `apt install xvfb` (Debian/Ubuntu) or add `pkgs.xvfb-run` to the Nix profile |
 | Tests pass locally but fail in CI | BLE state accumulated | Add `nrfjprog --recover` recovery step; cron weekly host reboot |
 | Two PRs both stuck | Concurrency group misconfigured | Verify `concurrency:` is at workflow level, not job level |
 | Fork PR triggered hardware job | Missing `if:` guard | Add `head.repo.full_name == github.repository` check |
