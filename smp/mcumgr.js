@@ -29,7 +29,8 @@ export class MCUManager {
    */
   constructor(opts = {}) {
     this._characteristic = opts.characteristic;
-    this._mtu = opts.mtu || 400;
+    this._mtu = opts.mtu || 244;
+    this._minMtu = opts.minMtu || 20;
     this._logger = opts.logger || { info: console.log, error: console.error };
 
     this._chunkTimeout   = opts.chunkTimeout || 5000;
@@ -232,12 +233,17 @@ export class MCUManager {
 
       if (this._consecutiveTimeouts >= this._maxConsecutiveTimeouts) {
         this._chunkTimeout = Math.min(this._chunkTimeout * 2, 15000);
-        this._logger.info(`Increased chunk timeout to ${this._chunkTimeout}ms`);
+        const oldMtu = this._mtu;
+        this._mtu = Math.max(Math.floor(this._mtu / 2), this._minMtu);
+        this._logger.info(
+          `Timeout #${this._consecutiveTimeouts}: halving MTU ${oldMtu} → ${this._mtu} and increasing chunk timeout to ${this._chunkTimeout}ms`
+        );
         if (this._imageUploadProgressCallback) {
           this._imageUploadProgressCallback({
             percentage: Math.floor(this._uploadOffset / this._uploadImage.byteLength * 100),
             timeoutAdjusted: true,
-            newTimeout: this._chunkTimeout
+            newTimeout: this._chunkTimeout,
+            newMtu: this._mtu,
           });
         }
       }

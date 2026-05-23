@@ -22,6 +22,24 @@ export class SmpProvider extends DfuProvider {
     };
   }
 
+  static _rcMessages = {
+    1: 'Unknown error',
+    2: 'Slot is busy or in bad state',
+    3: 'Invalid value',
+    4: 'Operation timeout',
+    5: 'No entry found',
+    6: 'Bad state',
+    7: 'Response too large',
+    8: 'Not supported',
+    9: 'Data is corrupt',
+    10: 'Device is busy',
+  };
+
+  static _fmtRc(rc, context = 'SMP') {
+    const msg = SmpProvider._rcMessages[rc] || `Device returned error code ${rc}`;
+    return `${context} failed: ${msg}`;
+  }
+
   /** @param {object} opts */
   constructor(opts = {}) {
     super();
@@ -52,27 +70,41 @@ export class SmpProvider extends DfuProvider {
     }
   }
 
-  async readState() {
-    const msg = await this._sendAndWait((done) => {
-      this._mcuMgr.onMessage((m) => {
-        if (m.op === 1 && m.group === 1 && m.id === 0) done(m.data);
-      });
-      this._mcuMgr.cmdImageState();
-    }, 30000);
+  async readState(retries = 2) {
+    let lastErr = null;
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const msg = await this._sendAndWait((done) => {
+          this._mcuMgr.onMessage((m) => {
+            if (m.op === 1 && m.group === 1 && m.id === 0) done(m.data);
+          });
+          this._mcuMgr.cmdImageState();
+        }, 30000);
 
-    if (msg.rc !== undefined && msg.rc !== 0) {
-      throw new Error(`Image state read failed rc=${msg.rc}`);
+        if (msg.rc !== undefined && msg.rc !== 0) {
+          throw new Error(SmpProvider._fmtRc(msg.rc, 'Image state read'));
+        }
+
+        const images = msg.images ?? [];
+        return images.map((img) => ({
+          slot:      img.slot,
+          version:   fmtVersion(img.version),
+          hash:      img.hash ? bufToHex(img.hash) : '',
+          active:    !!img.active,
+          pending:   !!img.pending,
+          confirmed: !!img.confirmed,
+        }));
+      } catch (err) {
+        lastErr = err;
+        if (attempt < retries && err.message.includes('timeout')) {
+          this.emit('log', { message: `readState timeout, retrying (${attempt + 1}/${retries})…`, level: 'warn' });
+          await new Promise((r) => setTimeout(r, 1000));
+          continue;
+        }
+        throw err;
+      }
     }
-
-    const images = msg.images ?? [];
-    return images.map((img) => ({
-      slot:      img.slot,
-      version:   fmtVersion(img.version),
-      hash:      img.hash ? bufToHex(img.hash) : '',
-      active:    !!img.active,
-      pending:   !!img.pending,
-      confirmed: !!img.confirmed,
-    }));
+    throw lastErr;
   }
 
   async loadFirmware(file) {
