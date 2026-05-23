@@ -1,0 +1,115 @@
+# ⚠️  DEACTIVATED — This workflow is not ready for CI use yet.
+#
+# What needs to happen before activation:
+#   1. Remove the `if: false` guard below.
+#   2. Add a self-hosted runner with:
+#      - BLE adapter (USB dongle or built-in)
+#      - nRF52840 DK attached via J-Link
+#      - Node.js 18+ and nrfutil toolchain installed
+#      - Chrome with Web Bluetooth flags enabled
+#   3. Uncomment the `on:` triggers (push / pull_request).
+#   4. Remove the `workflow_dispatch` trigger or keep it alongside the others.
+#
+# To test locally on a machine that already has the hardware:
+#   ./serve.py &
+#   make browser-test   # or: make test (headless)
+#
+# GitHub-hosted runners (ubuntu-latest, etc.) do NOT have BLE hardware, so
+# this workflow can only run on a self-hosted runner with the nRF52840 DK.
+
+name: BLE DFU End-to-End Test
+
+# on:
+#   push:
+#     branches: [main]
+#   pull_request:
+#     branches: [main]
+
+# Manual trigger only while deactivated.
+on:
+  workflow_dispatch:
+
+jobs:
+  smp-headless:
+    # Hard-guard: remove this line to activate.
+    if: false
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build firmware images
+        run: make build
+
+      - name: Run headless SMP DFU test
+        run: make test
+
+  smp-browser:
+    # Hard-guard: remove this line to activate.
+    if: false
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start HTTPS server
+        run: |
+          ./serve.py &
+          sleep 2
+          echo "Server PID: $!"
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Build firmware images
+        run: make build
+
+      - name: Run browser SMP DFU test
+        run: |
+          # Puppeteer is already installed in tools/ on the self-hosted runner.
+          make browser-test
+
+      - name: Stop HTTPS server
+        if: always()
+        run: kill "$SERVER_PID" || true
+
+      - name: Upload failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-test-failure-screenshot
+          path: browser-test-failure.png
+          if-no-files-found: ignore
+
+  nordic-browser:
+    # Hard-guard: remove this line to activate.
+    if: false
+    runs-on: self-hosted
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start HTTPS server
+        run: |
+          ./serve.py &
+          sleep 2
+          echo "SERVER_PID=$!" >> "$GITHUB_ENV"
+
+      - name: Run browser Nordic DFU test
+        run: |
+          # The Nordic bootloader must already be flashed on the self-hosted runner's DK.
+          # Provide the ZIP path via repository variable or secret.
+          make browser-test-nordic ZIP="${NORDIC_ZIP_PATH:-$GITHUB_WORKSPACE/firmware/build/dfu_application.zip}"
+
+      - name: Stop HTTPS server
+        if: always()
+        run: kill "$SERVER_PID" || true
+
+      - name: Upload failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nordic-browser-test-failure-screenshot
+          path: nordic-browser-test-failure.png
+          if-no-files-found: ignore

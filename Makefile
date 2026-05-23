@@ -18,7 +18,7 @@ V2_VER  := 2.0.0
 
 WEST := nrfutil sdk-manager toolchain launch --ncs-version $(NCS) --chdir $(NCS_DIR) -- west
 
-.PHONY: build build-v1 build-v2 flash test dfu harness-deps clean
+.PHONY: build build-v1 build-v2 flash test test-nordic dfu serve serve-lan harness-deps browser-test browser-test-nordic clean
 
 build: build-v1 build-v2
 
@@ -40,6 +40,18 @@ test: flash
 	node $(REPO)/tools/dfu-test.mjs $(V2_BIN)
 
 dfu: build test
+
+# ── Browser end-to-end tests (require serve.py running) ───────────────────
+
+# SMP browser DFU test — flash baseline, run Puppeteer-driven Chrome test
+browser-test: flash
+	node $(REPO)/tools/browser-dfu-test.mjs $(V2_BIN)
+
+# Nordic browser DFU test — requires Nordic bootloader + ZIP argument
+# Usage: make browser-test-nordic ZIP=path/to/package.zip
+browser-test-nordic:
+	$(if $(ZIP),, $(error ZIP variable not set. Usage: make browser-test-nordic ZIP=path/to/package.zip))
+	node $(REPO)/tools/nordic-browser-dfu-test.mjs $(ZIP)
 
 clean:
 	rm -rf $(BUILD) $(BUILD2)

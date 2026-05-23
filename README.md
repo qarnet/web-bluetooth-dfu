@@ -134,10 +134,13 @@ nordic/
   nordic-provider.js  — DfuProvider adapter for Nordic Secure DFU
 vendor/
   jszip.mjs            — Vendored JSZip ESM bundle
-  crc-32.js            — Vendored CRC-32 ESM bundle
+  crc32.js             — Vendored CRC-32 ESM bundle
 tools/
   ble-characteristic.mjs — node-ble ↔ Web Bluetooth adapter
   dfu-test.mjs         — Headless SMP DFU test harness (node-ble)
+  nordic-dfu-test.mjs  — Headless Nordic Secure DFU test harness (node-ble)
+  browser-dfu-test.mjs — Puppeteer end-to-end browser test (SMP, Chrome + Web Bluetooth)
+  nordic-browser-dfu-test.mjs — Puppeteer end-to-end browser test (Nordic)
 ```
 
 **Dependencies at runtime:** none beyond `vendor/`.  
@@ -191,4 +194,12 @@ rm -rf node_modules package*.json
 
 ## Testing
 
-See `TESTING.md` for the full build/flash/test loop and manual Chrome verification.
+Three test layers are available:
+
+1. **Headless SMP DFU** (`make test`) — fastest, runs in CI, covers the SMP protocol engine.
+2. **Headless Nordic DFU** (`node tools/nordic-dfu-test.mjs <package.zip>`) — covers Nordic Secure DFU protocol engine.
+3. **Browser end-to-end** (`make browser-test` with `serve.py` running) — exercises the real DOM, Web Bluetooth, and the full UI flow.
+
+All tests require a real nRF52840 DK connected to the machine running the test.
+
+See `TESTING.md` for the full build/flash/test loop.

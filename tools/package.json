@@ -4,9 +4,19 @@
   "type": "module",
   "description": "Dev-only headless DFU test harness. Not part of the shipped app.",
   "scripts": {
-    "dfu-test": "node dfu-test.mjs"
+    "dfu-test": "node dfu-test.mjs",
+    "browser-dfu-test": "node browser-dfu-test.mjs",
+    "nordic-browser-dfu-test": "node nordic-browser-dfu-test.mjs"
   },
   "dependencies": {
     "node-ble": "^1.9.0"
-  }
+  },
+  "version": "1.0.0",
+  "main": "index.js",
+  "devDependencies": {
+    "puppeteer": "^25.0.4"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

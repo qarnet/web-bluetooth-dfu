@@ -30,6 +30,93 @@ The harness exits 0 on success. Override the target with `DEVICE_NAME=...` or
 To prove the assertion has teeth, point it at the **baseline** `.bin` (same
 version as what's running) — it must exit non-zero, since no swap is observable.
 
+### Nordic Secure DFU headless harness
+
+```bash
+node tools/nordic-dfu-test.mjs <path-to-package.zip>
+```
+
+Environment:
+- `APP_NAME` — device name in application mode (default "Nordic_Buttonless")
+- `BOOTLOADER_NAME` — name after buttonless reboot (default "DfuTest")
+- `DEVICE_MAC` — skip name scan, connect directly
+
+---
+
+## Browser end-to-end test (Puppeteer + Chrome + Web Bluetooth)
+
+This is the highest-fidelity test: it opens a real Chrome window, navigates to the
+app, selects a firmware file via the real `<input type=file>`, triggers the
+native Web Bluetooth device picker, connects to the real DK, and drives the full
+DFU flow through the DOM.
+
+### Prerequisites
+
+1. **HTTPS server running** in another terminal:
+   ```bash
+   ./serve.py
+   ```
+
+2. **Puppeteer installed** in `tools/`:
+   ```bash
+   cd tools && npm install
+   ```
+   Puppeteer downloads its own Chrome binary automatically (~150 MB).
+
+3. **Chrome Web Bluetooth flag** (Linux only):
+   - Open `chrome://flags/#enable-web-bluetooth-new-permissions-backend`
+   - Set to **Enabled** and relaunch
+
+### SMP browser test
+
+```bash
+make browser-test   # flashes baseline + runs the full browser DFU flow
+```
+
+The test will:
+1. Open Chrome
+2. Load `https://localhost:8443`
+3. Upload `build-v2/firmware/zephyr/zephyr.signed.bin`
+4. Click **Scan & Connect**
+5. Select the "Zephyr" device from the native picker
+6. Click **Update Firmware**
+7. Wait for the device to reboot
+8. Click **Reconnect** and select "Zephyr" again
+9. Click **Confirm Update**
+10. Verify slot 0 shows the new version and is `active + confirmed`
+
+### Nordic browser test
+
+Requires a Nordic Secure DFU bootloader already flashed. Provide the ZIP path:
+
+```bash
+make browser-test-nordic ZIP=path/to/package.zip
+```
+
+Or run directly:
+
+```bash
+node tools/nordic-browser-dfu-test.mjs path/to/package.zip
+```
+
+### Environment variables
+
+| Variable | Default | Description |
+|---|---|---|
+| `APP_URL` | `https://localhost:8443` | URL the test navigates to |
+| `DEVICE_NAME` | `Zephyr` (SMP) / `DfuTarg` (Nordic) | BLE advertised name to select |
+| `BOOTLOADER_NAME` | `DfuTest` | Name after Nordic buttonless reboot |
+| `PUPPETEER_CHROME` | bundled Chrome | Path to custom Chrome binary |
+| `HEADLESS` | `0` (visible) | Set `1` to run without UI |
+| `TIMEOUT_MS` | `300000` (5 min) | Global test timeout |
+
+### Troubleshooting browser tests
+
+- **"Web Bluetooth unavailable"** — enable the Linux flag above, or you're not on HTTPS.
+- **Device picker times out** — the DK is not advertising. Power-cycle it.
+- **Screenshot on failure** — if the test fails, it saves `browser-test-failure.png` in the repo root.
+- **Multiple Chrome profiles** — Puppeteer launches a clean profile, so flags must be passed via `args` (already done). The Linux flag still needs to be set in the *system* Chrome once to register the preference, or set via `--enable-features=WebBluetoothNewPermissionsBackend` (Chrome 120+).
+
 ---
 
 ## Manual full-stack check (Chrome)
@@ -210,3 +297,7 @@ The sniffer decodes SMP frames inside GATT notifications — you can see exactly
 | After reboot, slot 0 still shows `1.0.0` | MCUboot swap failed — image hash mismatch or image not valid | Make sure you're uploading `zephyr.signed.bin` not `zephyr.bin` |
 | `Bad MCUboot magic` error in UI | Wrong file selected | Use `build/zephyr/zephyr.signed.bin`, not the `.hex` or unsigned `.bin` |
 | Legacy DFU hard-stop message | Device advertises `0x1530` service | Upgrade to Secure DFU bootloader |
+| Puppeteer "Web Bluetooth unavailable" | Linux flag not enabled | Enable `chrome://flags/#enable-web-bluetooth-new-permissions-backend` |
+| Puppeteer device chooser times out | DK not advertising or wrong name | Check `DEVICE_NAME` env var, power-cycle DK |
+
+(End of file - total 274 lines)
