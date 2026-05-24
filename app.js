@@ -167,6 +167,16 @@ controller.addEventListener('slots-updated', (e) => {
 controller.addEventListener('update-complete', () => {
   log('Update complete', 'ok');
   btnDfu.textContent = 'Done ✓';
+  // Persist last successful firmware metadata for convenience
+  try {
+    const last = {
+      name: fileNameEl.textContent,
+      protocol: protocolBadge.dataset.protocol,
+      version: fwInfoPlanned.textContent,
+      ts: Date.now(),
+    };
+    localStorage.setItem('dfu-last-firmware', JSON.stringify(last));
+  } catch { /* storage may be disabled */ }
 });
 
 controller.addEventListener('error', (e) => {
@@ -235,6 +245,7 @@ function showProtocol(providerId) {
   const p = providerId === 'smp' ? 'SMP / MCUboot' : providerId === 'nordic' ? 'Nordic Secure DFU' : '';
   protocolBadge.textContent = p;
   protocolBadge.style.display = p ? '' : 'none';
+  protocolBadge.dataset.protocol = providerId || '';
 }
 
 function configureUi(capabilities) {

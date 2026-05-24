@@ -21,27 +21,7 @@ future work that is **not yet scheduled** but has been identified as valuable.
 
 ## Nordic Secure DFU
 
-### Multi-image Nordic support (priority: low)
-
-Currently the Nordic path handles **single-application** `.zip` packages.
-Nordic packages can also contain:
-- `softdevice_bootloader` — SoftDevice + Bootloader combined
-- `softdevice` + `bootloader` — separate images
-- Multi-core (application + network core on nRF5340)
-
-`nordic/package.js` already parses the manifest and returns `getAppImage()` / `getBaseImage()`.
-Extending this to handle `softdevice_bootloader` type is mostly plumbing in
-`NordicProvider.runUpdate()` to call the right sequence of `transferInit` + `transferFirmware`
-for each sub-image.
-
-**Scope:**
-- Extend `SecureDfuPackage` to discover all image types in manifest
-- Extend `NordicProvider.loadFirmware()` to return an ordered list of images
-- Extend `runUpdate()` to iterate: init packet → firmware for each image
-- This is already architected but not tested — low priority because single-image
-  is the current target hardware (nRF52840 DK).
-
-**Estimated effort:** 1–2 commits, touches `nordic/package.js` and `nordic/nordic-provider.js`.
+- [x] **Multi-image Nordic support** — shipped. `SecureDfuPackage` already discovers all manifest types (`softdevice`, `bootloader`, `softdevice_bootloader`, `application`). `NordicProvider` supports both single-image and multi-image (base + application) flows with the `--multi-image` flag and continuation reboot. Verified on nRF52840 DK with SDK 17.1.0 test fixtures.
 
 ---
 
@@ -49,8 +29,8 @@ for each sub-image.
 
 - [x] **PWA support** — shipped. Added `manifest.json`, `icon.svg`, and `sw.js` service worker. App works offline after first load and can be installed as standalone.
 - [x] **Progress bar smoothing** — shipped. Added `transition: width 0.3s ease` to `.progress-fill` for smooth visual updates instead of chunk-jumps.
-- **Firmware version display:** Show the expected version parsed from the `.bin`/`.zip` in the UI before starting DFU.
-- **DFU history:** Persist last successful firmware file path in `localStorage` (security note: only the path, never the binary itself).
+- [x] **Firmware version display** — shipped. Parses version from `.bin` MCUboot header and from device active slot state. Shows both in UI.
+- [x] **DFU history** — shipped. On successful update, persists `{name, protocol, version, ts}` to `localStorage` under `dfu-last-firmware`. Security note: only metadata, never the binary.
 
 ---
 
