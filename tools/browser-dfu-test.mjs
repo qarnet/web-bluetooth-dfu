@@ -179,7 +179,7 @@ async function main() {
     await waitForPredicate(
       page,
       () => document.getElementById('btn-row-connected').style.display !== 'none',
-      { label: 'connected state' },
+      { label: 'connected state', timeout: 60_000 },
     );
     info('connected');
 
@@ -241,7 +241,7 @@ async function main() {
       await waitForPredicate(
         page,
         () => document.getElementById('btn-row-connected').style.display !== 'none',
-        { label: 'reconnected state' },
+        { label: 'reconnected state', timeout: 60_000 },
       );
       info('reconnected');
 

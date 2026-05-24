@@ -186,11 +186,11 @@ async function main() {
     info(`found device: ${device.name}`);
     await devicePrompt.select(device);
 
-    await waitForPredicate(
-      page,
-      () => document.getElementById('btn-row-connected').style.display !== 'none',
-      { label: 'connected state' },
-    );
+      await waitForPredicate(
+        page,
+        () => document.getElementById('btn-row-connected').style.display !== 'none',
+        { label: 'connected state', timeout: 60_000 },
+      );
     info('connected');
 
     // ── 4. Start DFU update ──────────────────────────────────────────────────

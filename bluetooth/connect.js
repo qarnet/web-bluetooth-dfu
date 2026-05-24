@@ -32,18 +32,29 @@ export async function connectToDevice(filterConfig, onDisconnect) {
 
   const device = await navigator.bluetooth.requestDevice(requestArgs);
 
-  // Retry gatt.connect() a few times — the device may still be booting its
-  // BLE stack after a firmware reset, which causes transient "Connection
-  // attempt failed" errors on the first try.
+  // Retry gatt.connect() with exponential backoff — the device may still be
+  // booting its BLE stack after a firmware reset. Nordic bootloaders in
+  // particular take 3–6 s before accepting connections.
   let server;
-  const maxRetries = 3;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  let lastErr;
+  const delays = [500, 1000, 1500, 2500, 4000, 6000, 8000];
+  for (let attempt = 0; attempt < delays.length; attempt++) {
     try {
       server = await device.gatt.connect();
-      break;
+      if (server.connected) break;
+      // Sometimes gatt.connect() resolves but server.connected is false
+      // (race in Chrome's implementation). Retry in that case too.
+      lastErr = new Error('gatt.connect() resolved but server not connected');
+      if (attempt === delays.length - 1) throw lastErr;
+      await new Promise((r) => setTimeout(r, delays[attempt]));
     } catch (err) {
-      if (attempt === maxRetries) throw err;
-      await new Promise((r) => setTimeout(r, 1000));
+      lastErr = err;
+      if (attempt === delays.length - 1) {
+        throw new Error(
+          `Connection failed after ${delays.length} attempts (${delays.reduce((a, b) => a + b, 0)}ms): ${lastErr.message}`
+        );
+      }
+      await new Promise((r) => setTimeout(r, delays[attempt]));
     }
   }
 
