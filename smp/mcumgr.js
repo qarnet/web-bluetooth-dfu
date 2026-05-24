@@ -32,6 +32,7 @@ export class MCUManager {
     this._mtu = opts.mtu || 244;
     this._minMtu = opts.minMtu || 20;
     this._logger = opts.logger || { info: console.log, error: console.error };
+    this._reliableMode = opts.reliableMode || false;
 
     this._chunkTimeout   = opts.chunkTimeout || 5000;
     this._maxConsecutiveTimeouts = opts.maxConsecutiveTimeouts || 2;
@@ -96,10 +97,19 @@ export class MCUManager {
     this._seq = (this._seq + 1) % 256;
   }
 
+  setReliableMode(enabled) {
+    this._reliableMode = !!enabled;
+    this._logger.info(`Reliable mode ${this._reliableMode ? 'enabled' : 'disabled'}`);
+  }
+
   async _writeFragmented(frame) {
     for (let offset = 0; offset < frame.byteLength; offset += this._mtu) {
       const chunk = frame.slice(offset, offset + this._mtu);
-      await this._characteristic.writeValueWithoutResponse(chunk);
+      if (this._reliableMode) {
+        await this._characteristic.writeValueWithResponse(chunk);
+      } else {
+        await this._characteristic.writeValueWithoutResponse(chunk);
+      }
     }
   }
 
@@ -168,6 +178,7 @@ export class MCUManager {
       if ((data.rc === 0 || data.rc === undefined) && data.off !== undefined) {
         this._consecutiveTimeouts = 0;
         this._uploadOffset = data.off;
+        this._lastAckOffset = data.off;  // Track for resume
         this._uploadNext();
         return;
       }
@@ -274,13 +285,13 @@ export class MCUManager {
     await this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_UPLOAD, message);
   }
 
-  async cmdUpload(image, slot = 0) {
+  async cmdUpload(image, slot = 0, startOffset = 0) {
     if (this._uploadIsInProgress) {
       this._logger.error('Upload is already in progress.');
       return;
     }
     this._uploadIsInProgress = true;
-    this._uploadOffset = 0;
+    this._uploadOffset = startOffset;
     this._uploadImage = image;
     this._uploadSlot = slot;
     this._consecutiveTimeouts = 0;
@@ -289,11 +300,15 @@ export class MCUManager {
     this._uploadNext();
   }
 
+  get uploadOffset() {
+    return this._lastAckOffset || this._uploadOffset || 0;
+  }
+
   cancelUpload() {
     if (!this._uploadIsInProgress) return;
     if (this._uploadTimeout) { clearTimeout(this._uploadTimeout); this._uploadTimeout = null; }
     this._uploadIsInProgress = false;
-    this._uploadOffset = 0;
+    // Preserve _uploadOffset for potential resume; don't reset to 0
     this._uploadImage = null;
     this._consecutiveTimeouts = 0;
     this._totalTimeouts = 0;

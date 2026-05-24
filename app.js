@@ -483,6 +483,11 @@ btnEraseSlot.addEventListener('click', async () => {
   }
 });
 
+// Reliable mode toggle
+reliableModeCheck.addEventListener('change', () => {
+  controller.setReliableMode(reliableModeCheck.checked);
+});
+
 // ── Confirm ─────────────────────────────────────────────────────────────────
 
 btnConfirm.addEventListener('click', async () => {

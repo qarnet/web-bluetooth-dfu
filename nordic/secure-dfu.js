@@ -85,6 +85,7 @@ export class SecureDfu extends DfuEventTarget {
     this._packetChar = null;
     this._notifyCleanupFn = null;
     this._abortRequested = false;
+    this._reliableMode = false;
   }
 
   log(message) {
@@ -287,6 +288,11 @@ export class SecureDfu extends DfuEventTarget {
     this.log('transfer cancellation requested');
   }
 
+  setReliableMode(enabled) {
+    this._reliableMode = !!enabled;
+    this.log(`Reliable mode ${this._reliableMode ? 'enabled' : 'disabled'}`);
+  }
+
   transferData(data, totalBytes, start = 0) {
     if (this._abortRequested) {
       throw new Error('Transfer cancelled by user');
@@ -294,7 +300,11 @@ export class SecureDfu extends DfuEventTarget {
     const end = Math.min(start + PACKET_SIZE, data.byteLength);
     const packet = data.slice(start, end);
 
-    return this._packetChar.writeValueWithoutResponse(new Uint8Array(packet))
+    const writeMethod = this._reliableMode
+      ? this._packetChar.writeValueWithResponse.bind(this._packetChar)
+      : this._packetChar.writeValueWithoutResponse.bind(this._packetChar);
+
+    return writeMethod(new Uint8Array(packet))
       .then(() => this.delayPromise(this._delay))
       .then(() => {
         this.progress(start + end, totalBytes, 'firmware');

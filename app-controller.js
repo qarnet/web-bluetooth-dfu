@@ -266,6 +266,10 @@ export class AppController extends EventTarget {
     this._provider?.cancel();
   }
 
+  setReliableMode(enabled) {
+    this._provider?.setReliableMode(enabled);
+  }
+
   async confirm() {
     this._assertState(STATES.CONNECTED);
     if (!this._provider) throw new Error('No provider attached');

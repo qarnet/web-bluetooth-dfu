@@ -85,6 +85,10 @@ export class NordicProvider extends DfuProvider {
     this._dfu?.cancel();
   }
 
+  setReliableMode(enabled) {
+    this._dfu?.setReliableMode(enabled);
+  }
+
   async readState() {
     return []; // Nordic Secure DFU does not expose image slots
   }

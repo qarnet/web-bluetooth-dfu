@@ -47,6 +47,7 @@ export class SmpProvider extends DfuProvider {
     this._mcuMgr = null;
     this._mtu = opts.mtu || 244;
     this._firmware = null;
+    this._resumeOffset = 0;
   }
 
   async attach(session) {
@@ -73,6 +74,10 @@ export class SmpProvider extends DfuProvider {
 
   cancel() {
     this._mcuMgr?.cancelUpload();
+  }
+
+  setReliableMode(enabled) {
+    this._mcuMgr?.setReliableMode(enabled);
   }
 
   async eraseSlot() {
@@ -129,7 +134,21 @@ export class SmpProvider extends DfuProvider {
     if (!this._firmware || !this._mcuMgr) throw new Error('Firmware or manager not ready');
 
     this.emit('phase', { phase: 'upload', label: 'Uploading firmware…' });
-    await this._doUpload();
+
+    // Resume from last ack'd offset if we have one
+    const startOffset = this._resumeOffset || 0;
+    if (startOffset > 0) {
+      this.emit('log', { message: `Resuming upload from offset ${startOffset}`, level: 'info' });
+    }
+
+    try {
+      await this._doUpload(startOffset);
+      this._resumeOffset = 0;  // Clear on success
+    } catch (err) {
+      // Save offset for potential resume
+      this._resumeOffset = this._mcuMgr.uploadOffset;
+      throw err;
+    }
 
     this.emit('phase', { phase: 'test', label: 'Marking for test…' });
     const hash = await this._getUploadedHash();
@@ -168,7 +187,7 @@ export class SmpProvider extends DfuProvider {
 
   // ── internal helpers ────────────────────────────────────────────────────────
 
-  _doUpload() {
+  _doUpload(startOffset = 0) {
     return new Promise((resolve, reject) => {
       let lastPct = -1;
       this._mcuMgr.onImageUploadProgress((ev) => {
@@ -184,7 +203,7 @@ export class SmpProvider extends DfuProvider {
         resolve();
       });
       this._mcuMgr.onImageUploadError((err) => reject(new Error(err.error)));
-      this._mcuMgr.cmdUpload(this._firmware.buffer || this._firmware);
+      this._mcuMgr.cmdUpload(this._firmware.buffer || this._firmware, 0, startOffset);
     });
   }
 
