@@ -35,6 +35,11 @@ firmware/.cache
 **/*.map
 **/*.pickle
 
+# Test fixtures (shipped so anyone can verify)
+!test/fixtures/**/*.hex
+!test/fixtures/**/*.zip
+!test/fixtures/**/*.bin
+
 # Auto-generated HTTPS certificates
 .localhost.pem
 .localhost-key.pem

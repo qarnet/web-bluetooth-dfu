@@ -92,7 +92,7 @@ will fail; use the Xvfb target instead.
 The test will:
 1. Open Chrome
 2. Load `https://localhost:8443`
-3. Upload `build-v2/firmware/zephyr/zephyr.signed.bin`
+ 3. Upload `test/fixtures/smp/zephyr.signed.bin`
 4. Click **Scan & Connect**
 5. Select the "Zephyr" device from the native picker
 6. Click **Update Firmware**
@@ -289,9 +289,9 @@ console.log('app image', img.type, img.initFile, img.imageFile);
 ### Hardware (nRF52840 DK)
 
 Flash the DK with a Nordic Secure DFU bootloader baseline from SDK 17.1.0:
-`sd_s140_bootloader_buttonless_with_setting_page_dfu_secure_ble_debug_without_bonds.hex`.
+`test/fixtures/nordic/sd_s140_bootloader_buttonless_with_setting_page_dfu_secure_ble_debug_without_bonds.hex`.
 
-Pick the matching `.zip` (e.g. `ble_app_buttonless_dfu_without_bonds_s140.zip`),
+Pick the matching `.zip` (e.g. `test/fixtures/nordic/ble_app_buttonless_dfu_without_bonds_s140.zip`),
 connect in Chrome, and confirm the transfer completes. The buttonless flow will
 prompt for reconnect after the device reboots into bootloader mode.
 

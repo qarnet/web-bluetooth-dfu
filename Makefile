@@ -12,8 +12,8 @@ NCS_DIR := $(HOME)/ncs/$(NCS)
 SRC     := $(REPO)/firmware
 BUILD   := $(SRC)/build
 BUILD2  := $(SRC)/build-v2
-HEX     := $(BUILD)/merged.hex
-V2_BIN  := $(BUILD2)/firmware/zephyr/zephyr.signed.bin
+HEX     := $(REPO)/test/fixtures/smp/merged.hex
+V2_BIN  := $(REPO)/test/fixtures/smp/zephyr.signed.bin
 V2_VER  := 2.0.0
 
 WEST := nrfutil sdk-manager toolchain launch --ncs-version $(NCS) --chdir $(NCS_DIR) -- west
