@@ -169,7 +169,11 @@ export class AppController extends EventTarget {
       }
     } catch (err) {
       this._setState(STATES.IDLE);
-      throw err;
+      this.emitRecoverableError(
+        err.message,
+        () => this.connect(filterConfig),
+        'Retry'
+      );
     }
   }
 
@@ -306,7 +310,15 @@ export class AppController extends EventTarget {
     }
   }
 
-  // ── internal ──────────────────────────────────────────────────────────────
+  // ── Error recovery helpers ────────────────────────────────────────────────
+
+  emitRecoverableError(message, action = null, label = null) {
+    this.emit('error', { message, recoverable: true, action, label });
+  }
+
+  emitError(message) {
+    this.emit('error', { message, recoverable: false });
+  }
 
   _handleDisconnect(reason) {
     this._connection = null;

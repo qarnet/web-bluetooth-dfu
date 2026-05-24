@@ -7,6 +7,7 @@ const fileInput       = document.getElementById('file-input');
 const fileLabel       = document.getElementById('file-label');
 const fileNameEl      = document.getElementById('file-name');
 const fileSizeEl      = document.getElementById('file-size');
+const chunkRow        = document.getElementById('chunk-row');
 const fileRow         = document.querySelector('.file-row');
 const chunkSizeInput  = document.getElementById('chunk-size');
 const protocolBadge   = document.getElementById('protocol-badge');
@@ -99,12 +100,15 @@ controller.addEventListener('connected', (e) => {
 
 controller.addEventListener('disconnected', (e) => {
   const { reason } = e.detail;
-  if (reason === 'device') log('Device disconnected', 'error');
+  if (reason === 'device') {
+    log('Device disconnected', 'error', {
+      action: () => controller.connect(getFilterConfig()),
+      label: 'Reconnect'
+    });
+  }
+  if (reason === 'user') log('Disconnected', 'info');
   showConnected(false);
-  slotsEl.innerHTML = '';
   updateDfuButton();
-  updateConfirmButton(false);
-  progressWrap.style.display = 'none';
 });
 
 controller.addEventListener('log', (e) => log(e.detail.message, e.detail.level));
@@ -149,17 +153,31 @@ controller.addEventListener('update-complete', () => {
 });
 
 controller.addEventListener('error', (e) => {
-  log(e.detail.message, 'error');
+  const { message, recoverable, action, label } = e.detail;
+  log(message, 'error', recoverable ? { action, label } : null);
 });
 
 // ── Logging ─────────────────────────────────────────────────────────────────
 
-function log(text, level = 'info') {
+function log(text, level = 'info', recovery = null) {
   secLog.style.display = '';
   const ts = new Date().toLocaleTimeString();
   const el = document.createElement('div');
   el.className = `log-${level}`;
   el.innerHTML = `<span class="log-ts">${ts}</span>${text}`;
+
+  if (recovery && recovery.action) {
+    const btn = document.createElement('button');
+    btn.className = 'log-action-btn';
+    btn.textContent = recovery.label || 'Retry';
+    btn.addEventListener('click', () => {
+      recovery.action();
+      btn.disabled = true;
+      btn.textContent = 'Retrying…';
+    });
+    el.appendChild(btn);
+  }
+
   logEntries.appendChild(el);
   logEntries.scrollTop = logEntries.scrollHeight;
   console.log(`[${level.toUpperCase()}] ${text}`);
@@ -377,7 +395,7 @@ btnConnect.addEventListener('click', async () => {
   try {
     await controller.connect(getFilterConfig());
   } catch (err) {
-    log(err.message, 'error');
+    // Controller emits recoverable-error with retry action; don't duplicate log here
     showConnected(false);
   }
 });

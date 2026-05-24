@@ -238,6 +238,9 @@ export class MCUManager {
         this._logger.info(
           `Timeout #${this._consecutiveTimeouts}: halving MTU ${oldMtu} → ${this._mtu} and increasing chunk timeout to ${this._chunkTimeout}ms`
         );
+        this._logger.info(
+          `If upload continues to stall, try reducing chunk size manually or reconnect.`
+        );
         if (this._imageUploadProgressCallback) {
           this._imageUploadProgressCallback({
             percentage: Math.floor(this._uploadOffset / this._uploadImage.byteLength * 100),
