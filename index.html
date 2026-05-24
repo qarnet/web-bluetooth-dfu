@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <link rel="manifest" href="/manifest.json" />
   <title>BLE DFU</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -140,7 +142,7 @@
 
     .progress-wrap { display: flex; flex-direction: column; gap: 0.3rem; }
     .progress-bar { height: 8px; background: #334155; border-radius: 99px; overflow: hidden; }
-    .progress-fill { height: 100%; background: #22c55e; border-radius: 99px; transition: width 0.1s; }
+    .progress-fill { height: 100%; background: #22c55e; border-radius: 99px; transition: width 0.3s ease; }
     .progress-text { font-size: 0.75rem; color: #64748b; text-align: right; }
 
     .log-entries { display: flex; flex-direction: column; gap: 0.15rem; max-height: 180px; overflow-y: auto; font-family: monospace; font-size: 0.78rem; }
@@ -301,6 +303,10 @@
   <script type="module" src="app.js"></script>
   <script>
     (function() {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(console.error);
+      }
+
       const banner = document.getElementById('compat-banner');
       const msg = document.getElementById('compat-msg');
       if (!navigator.bluetooth) {

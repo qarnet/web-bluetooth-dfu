@@ -47,17 +47,10 @@ for each sub-image.
 
 ## Misc Observations (not scheduled)
 
-- **PWA support:** Add `manifest.json` and service worker for offline capability.
-- **Theme toggle:** The dark mode is hardcoded; a light mode toggle is trivial CSS work.
-- **Keyboard shortcuts:** `Ctrl+U` to trigger DFU, `Ctrl+R` to reconnect.
-- **Firmware version display:** Show the expected version parsed from the `.bin`/`.zip`
-  in the UI before starting DFU.
-- **DFU history:** Persist last successful firmware file path in `localStorage`
-  (security note: only the path, never the binary itself).
-- [x] **Chunk size auto-negotiation** — shipped. Removed the dead manual chunk size input (it was never wired to the upload flow). MCUManager already auto-halves MTU internally on timeout (244 → 122 → 61 → 20). The UI no longer misleads users with a non-functional control.
-- [x] **Log export** — shipped. "Copy logs" and "Download" buttons below the log panel. Download generates `dfu-log-YYYY-MM-DDTHH-mm-ss.txt`.
-- **Progress bar smoothing:** The bar currently jumps on chunk ack; use CSS transition
-  or a small running-average to smooth visual updates.
+- [x] **PWA support** — shipped. Added `manifest.json`, `icon.svg`, and `sw.js` service worker. App works offline after first load and can be installed as standalone.
+- [x] **Progress bar smoothing** — shipped. Added `transition: width 0.3s ease` to `.progress-fill` for smooth visual updates instead of chunk-jumps.
+- **Firmware version display:** Show the expected version parsed from the `.bin`/`.zip` in the UI before starting DFU.
+- **DFU history:** Persist last successful firmware file path in `localStorage` (security note: only the path, never the binary itself).
 
 ---
 
