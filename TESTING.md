@@ -345,7 +345,7 @@ The sniffer decodes SMP frames inside GATT notifications — you can see exactly
 |---|---|---|
 | Device picker is empty / no devices found | Device not advertising, or built without SMP BLE enabled | Check Kconfig, power-cycle device |
 | Connects but `listImages` times out | SMP not responding — notifications not enabled or wrong characteristic | Check device logs over RTT/UART |
-| Upload starts but stalls at 0% | Chunk too large for negotiated MTU | Reduce chunk size to 64 or 32 |
+| Upload starts but stalls at 0% | Chunk too large for negotiated MTU | Auto-negotiated internally; if stall persists, reconnect or reduce MTU in firmware
 | Upload completes but device doesn't reboot | `testImage` or `resetDevice` failed | Check DevTools console for rc codes |
 | After reboot, slot 0 still shows `1.0.0` | MCUboot swap failed — image hash mismatch or image not valid | Make sure you're uploading `zephyr.signed.bin` not `zephyr.bin` |
 | `Bad MCUboot magic` error in UI | Wrong file selected | Use `build/zephyr/zephyr.signed.bin`, not the `.hex` or unsigned `.bin` |

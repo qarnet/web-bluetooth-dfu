@@ -7,9 +7,7 @@ const fileInput       = document.getElementById('file-input');
 const fileLabel       = document.getElementById('file-label');
 const fileNameEl      = document.getElementById('file-name');
 const fileSizeEl      = document.getElementById('file-size');
-const chunkRow        = document.getElementById('chunk-row');
 const fileRow         = document.querySelector('.file-row');
-const chunkSizeInput  = document.getElementById('chunk-size');
 const protocolBadge   = document.getElementById('protocol-badge');
 const btnConnect      = document.getElementById('btn-connect');
 const btnRowConnect   = document.getElementById('btn-row-connect');
@@ -128,7 +126,6 @@ controller.addEventListener('state-changed', (e) => {
   btnConnect.disabled = isBusy || state === 'connected';
   btnRefresh.disabled = isBusy;
   btnDisconnect.disabled = isBusy;
-  chunkSizeInput.disabled = isBusy;
   updateDfuButton();
 });
 
@@ -227,11 +224,6 @@ function configureUi(capabilities) {
     document.getElementById('sec-slots').style.display = 'none';
   }
   updateConfirmButton(false);
-  if (capabilities.chunkConfigurable) {
-    chunkRow.style.display = '';
-  } else {
-    chunkRow.style.display = 'none';
-  }
 }
 
 function renderSlots(slots) {
@@ -459,6 +451,37 @@ btnReconnect.addEventListener('click', async () => {
     log(err.message, 'error');
     btnReconnect.disabled = false;
   }
+});
+
+// ── Log export ─────────────────────────────────────────────────────────────
+
+const btnCopyLog     = document.getElementById('btn-copy-log');
+const btnDownloadLog = document.getElementById('btn-download-log');
+
+function getLogText() {
+  return Array.from(logEntries.children)
+    .map((el) => el.textContent.replace('Retrying…', '').trim())
+    .join('\n');
+}
+
+btnCopyLog.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(getLogText());
+    btnCopyLog.textContent = 'Copied!';
+    setTimeout(() => btnCopyLog.textContent = 'Copy logs', 1500);
+  } catch {
+    log('Clipboard write failed', 'warn');
+  }
+});
+
+btnDownloadLog.addEventListener('click', () => {
+  const blob = new Blob([getLogText()], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `dfu-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
 });
 
 // ── Initial state ───────────────────────────────────────────────────────────

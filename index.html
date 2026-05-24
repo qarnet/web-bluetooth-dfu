@@ -101,11 +101,7 @@
     }
     .file-name { font-size: 0.875rem; color: #4ade80; }
 
-    .chunk-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b; }
-    .chunk-row input[type=number] {
-      width: 60px; background: #334155; border: none; border-radius: 5px;
-      padding: 0.2rem 0.4rem; color: #e2e8f0; font: inherit; font-size: 0.8rem;
-    }
+
 
     .multi-image-row {
       display: flex; align-items: center; gap: 0.75rem;
@@ -166,6 +162,13 @@
     }
     .log-action-btn:hover:not(:disabled) { background: #475569; }
     .log-action-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .log-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid #334155;
+    }
     .log-ts    { color: #374151; margin-right: 0.4rem; }
 
     .filter-toggle { background: #334155; color: #94a3b8; font-size: 0.8rem; padding: 0.4rem 0.8rem; }
@@ -232,11 +235,6 @@
         <span class="file-name" id="file-name"></span>
         <span class="protocol-badge" id="protocol-badge"></span>
       </div>
-      <div class="chunk-row" id="chunk-row" style="display:none">
-        <span id="file-size"></span>
-        <span>·</span>
-        <label>Chunk size <input type="number" id="chunk-size" min="20" max="244" value="128" /> bytes</label>
-      </div>
       <div class="multi-image-row" id="multi-image-row" style="display:none">
         <label class="multi-image-label">
           <input type="checkbox" id="multi-image-check" />
@@ -291,6 +289,10 @@
     <section id="sec-log" style="display:none">
       <h2>Log</h2>
       <div class="log-entries" id="log-entries"></div>
+      <div class="log-actions">
+        <button class="btn-secondary" id="btn-copy-log">Copy logs</button>
+        <button class="btn-secondary" id="btn-download-log">Download</button>
+      </div>
     </section>
 
     <footer>Chrome / Edge desktop + Android only · HTTPS required · Supports SMP/MCUboot and Nordic Secure DFU</footer>

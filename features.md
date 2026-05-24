@@ -13,26 +13,9 @@ future work that is **not yet scheduled** but has been identified as valuable.
 
 ## Error Handling
 
-### Better error recovery in the UI (priority: very high)
+- [x] **Better error recovery in the UI** — shipped. Recoverable errors now show contextual action buttons inline in the log panel (Retry, Reconnect). Connection failures and device disconnects are recoverable. MTU auto-halving logs include recovery hints.
 
-The current UI shows errors in the log panel but does not help the user recover.
-Common recoverable failures need explicit action buttons:
-
-| Failure scenario | Current behavior | Desired behavior |
-|---|---|---|
-| Upload stalls at 0% (MTU too large) | Log error, user must reconnect | Auto-retry with halved chunk size; or a "Retry with 64-byte chunks" button |
-| `listImages` timeout after connect | Disconnect, manual retry | "Retry read" button; or auto-retry once |
-| Device disconnects mid-transfer | Error log only | "Resume / Reconnect" button that preserves state |
-| `testImage` or `resetDevice` fails | No visible error detail | Show the rc code and suggest fix |
-| Wrong file type selected | "Bad MCUboot magic" error | More specific error with file extension hint |
-| Nordic buttonless trigger fails | Silent failure or cryptic error | "Device not in buttonless mode" with flash instructions |
-
-**Scope:**
-- Add a `recoverableError` flag to provider errors or a dedicated event
-- `app.js`: on `recoverableError`, render a contextual action button in the log
-- SMP provider: retry logic for chunk size halving on MTU stall
-
-**Estimated effort:** 2–3 commits, touches `app.js`, both providers, and `index.html`.
+---
 
 ---
 
@@ -71,11 +54,10 @@ for each sub-image.
   in the UI before starting DFU.
 - **DFU history:** Persist last successful firmware file path in `localStorage`
   (security note: only the path, never the binary itself).
-- **Chunk size auto-negotiation:** Instead of a manual input, try default 244 bytes
-  and automatically fall back if the first chunk stalls.
+- [x] **Chunk size auto-negotiation** — shipped. Removed the dead manual chunk size input (it was never wired to the upload flow). MCUManager already auto-halves MTU internally on timeout (244 → 122 → 61 → 20). The UI no longer misleads users with a non-functional control.
+- [x] **Log export** — shipped. "Copy logs" and "Download" buttons below the log panel. Download generates `dfu-log-YYYY-MM-DDTHH-mm-ss.txt`.
 - **Progress bar smoothing:** The bar currently jumps on chunk ack; use CSS transition
   or a small running-average to smooth visual updates.
-- **Log export:** Add a "Copy logs" or "Download logs" button for bug reports.
 
 ---
 
