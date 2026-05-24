@@ -40,8 +40,7 @@ The firmware file to upload is `build/zephyr/zephyr.signed.bin` — the MCUboot-
 ### Nordic Secure DFU (nRF5 SDK)
 
 Requires a bootloader built with Secure DFU. Upload `.zip` packages produced by
-nRF Connect / nrfutil (single-application packages first; multi-image is
-architected but not yet fully verified).
+nRF Connect / nrfutil.
 
 ---
 

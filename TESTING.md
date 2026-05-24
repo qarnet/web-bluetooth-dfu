@@ -41,6 +41,14 @@ Environment:
 - `BOOTLOADER_NAME` — name after buttonless reboot (default "DfuTest")
 - `DEVICE_MAC` — skip name scan, connect directly
 
+Multi-image packages (base image + application) are supported by adding `--multi-image`:
+
+```bash
+node tools/nordic-dfu-test.mjs --multi-image <path-to-package.zip>
+```
+
+The provider uploads the base image first, waits for the bootloader to reboot into continuation mode (per `NRF_BL_DFU_CONTINUATION_TIMEOUT_MS`), then reconnects and transfers the application image.
+
 ---
 
 ## Browser end-to-end test (Puppeteer + Chrome + Web Bluetooth)
@@ -105,6 +113,21 @@ Or run directly:
 
 ```bash
 node tools/nordic-browser-dfu-test.mjs path/to/package.zip
+```
+
+**Multi-image:**
+
+For packages that include both a base image (SoftDevice / bootloader) and an application image, add `--multi-image`:
+
+```bash
+make browser-test-nordic-multi ZIP=path/to/package.zip
+make browser-test-nordic-multi-headless ZIP=path/to/package.zip
+```
+
+Or run directly:
+
+```bash
+node tools/nordic-browser-dfu-test.mjs --multi-image path/to/package.zip
 ```
 
 ### Environment variables

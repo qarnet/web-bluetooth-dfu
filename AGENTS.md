@@ -102,6 +102,32 @@ make test     # flash baseline, run dfu-test.mjs with build-v2/zephyr.signed.bin
 
 Reference bootloader hex and `.zip` packages from nRF5 SDK 17.1.0 are stored under the Nextcloud path (see global rules `ncs-nrfutil.md` for layout).
 
+## Hardware environment notes
+
+This machine has two USB devices that tests depend on:
+
+| Device | Expected `lsusb` ID | Role |
+|---|---|---|
+| nRF52840 DK (via J-Link) | `1366:1051` SEGGER J-Link | Target firmware device |
+| ASUS BT400 BLE dongle | `0b05:17cb` ASUSTek Broadcom BCM20702A0 | BLE adapter for `bluetoothctl` / `node-ble` |
+
+Before running any BLE test (`make test`, `node tools/nordic-dfu-test.mjs`, etc.), verify both are present:
+
+```bash
+# Should show 1366:1051 (SEGGER) and 0b05:17cb (ASUS BT400)
+lsusb
+
+# Should show a controller entry with Powered: yes
+bluetoothctl show
+```
+
+If the DK is not in `lsusb`, check the USB cable.
+If the BT400 is not in `lsusb` (or `bluetoothctl show` reports `No default controller available`), the Bluetooth service or USB passthrough may need to be restarted.
+
+### User intervention required for Bluetooth restart
+
+This environment runs headless; `sudo` is unavailable. If `hciconfig` / `bluetoothctl` does not show the expected controller, the agent **cannot** self-restore the BLE adapter. The user must fix the Bluetooth USB passthrough / restart `bluetoothd` outside of this session before BLE tests can proceed.
+
 ## External rules
 
 Per-repo NCS/Zephyr lookup conventions and Web Bluetooth + SMP protocol rules are stored in global opencode rule files referenced by `opencode.json`:
