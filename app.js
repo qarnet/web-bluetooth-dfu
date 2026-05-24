@@ -16,7 +16,9 @@ const btnRefresh      = document.getElementById('btn-refresh');
 const btnDisconnect   = document.getElementById('btn-disconnect');
 const slotsEl         = document.getElementById('slots');
 const btnDfu          = document.getElementById('btn-dfu');
+const btnCancel       = document.getElementById('btn-cancel');
 const btnConfirm      = document.getElementById('btn-confirm');
+const btnEraseSlot    = document.getElementById('btn-erase-slot');
 const btnReconnect    = document.getElementById('btn-reconnect');
 const progressWrap    = document.getElementById('progress-wrap');
 const progressFill    = document.getElementById('progress-fill');
@@ -35,6 +37,10 @@ const serviceUuidInput= document.getElementById('service-uuid');
 const multiImageRow   = document.getElementById('multi-image-row');
 const multiImageCheck = document.getElementById('multi-image-check');
 const multiImageInfo  = document.getElementById('multi-image-info');
+
+// Reliable mode UI refs
+const reliableModeRow   = document.getElementById('reliable-mode-row');
+const reliableModeCheck = document.getElementById('reliable-mode-check');
 
 // Firmware version display refs
 const firmwareInfo    = document.getElementById('firmware-info');
@@ -146,6 +152,7 @@ controller.addEventListener('state-changed', (e) => {
   btnConnect.disabled = isBusy || state === 'connected';
   btnRefresh.disabled = isBusy;
   btnDisconnect.disabled = isBusy;
+  btnCancel.disabled = state !== 'uploading';
   updateDfuButton();
 });
 
@@ -261,6 +268,7 @@ function renderSlots(slots) {
   slotsEl.innerHTML = '';
   if (!slots || !slots.length) {
     slotsEl.innerHTML = '<div class="slot"><em>No slot information available</em></div>';
+    btnEraseSlot.style.display = 'none';
     return;
   }
   for (const s of slots) {
@@ -280,6 +288,9 @@ function renderSlots(slots) {
       <div class="slot-hash">${s.hash}</div>`;
     slotsEl.appendChild(el);
   }
+  // Show erase button if slot 1 exists and has data (not empty)
+  const slot1 = slots.find((s) => s.slot === 1);
+  btnEraseSlot.style.display = (slot1 && slot1.version !== 'empty') ? '' : 'none';
 }
 
 function checkPending(slots) {
@@ -450,6 +461,25 @@ btnDfu.addEventListener('click', async () => {
   } finally {
     setProgress(0, 0);
     updateDfuButton();
+  }
+});
+
+btnCancel.addEventListener('click', () => {
+  controller.cancel();
+  log('Upload cancelled', 'warn');
+  btnDfu.textContent = 'Update Firmware';
+  btnCancel.disabled = true;
+});
+
+btnEraseSlot.addEventListener('click', async () => {
+  btnEraseSlot.disabled = true;
+  try {
+    await controller.eraseSlot();
+    log('Slot 1 erased', 'ok');
+  } catch (err) {
+    log(err.message, 'error');
+  } finally {
+    btnEraseSlot.disabled = false;
   }
 });
 

@@ -84,6 +84,7 @@ export class SecureDfu extends DfuEventTarget {
     this._controlChar = null;
     this._packetChar = null;
     this._notifyCleanupFn = null;
+    this._abortRequested = false;
   }
 
   log(message) {
@@ -123,6 +124,16 @@ export class SecureDfu extends DfuEventTarget {
     await this._controlChar.startNotifications();
     this._notifyCleanupFn = _onNotify(this._controlChar, this.handleNotification.bind(this));
     this.log("enabled control notifications");
+
+    // Enable receipt notifications (PRN) to reduce per-packet ACK overhead
+    try {
+      const view = new DataView(new ArrayBuffer(2));
+      view.setUint16(0, 10, LITTLE_ENDIAN);
+      await this.sendControl(OPERATIONS.RECEIPT_NOTIFICATIONS, view.buffer);
+      this.log("receipt notifications set to 10");
+    } catch (err) {
+      this.log("failed to set receipt notifications: " + err.message);
+    }
   }
 
   async _gattConnect(device, serviceUUID = SecureDfu.SERVICE_UUID) {
@@ -271,7 +282,15 @@ export class SecureDfu extends DfuEventTarget {
       });
   }
 
+  cancel() {
+    this._abortRequested = true;
+    this.log('transfer cancellation requested');
+  }
+
   transferData(data, totalBytes, start = 0) {
+    if (this._abortRequested) {
+      throw new Error('Transfer cancelled by user');
+    }
     const end = Math.min(start + PACKET_SIZE, data.byteLength);
     const packet = data.slice(start, end);
 

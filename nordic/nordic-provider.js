@@ -15,6 +15,7 @@ export class NordicProvider extends DfuProvider {
       hasTestStep: false,
       chunkConfigurable: false,
       multiObject: true,
+      hasCancel: true,
     };
   }
 
@@ -78,6 +79,10 @@ export class NordicProvider extends DfuProvider {
 
   async detach() {
     this._dfu = null;
+  }
+
+  cancel() {
+    this._dfu?.cancel();
   }
 
   async readState() {

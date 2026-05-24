@@ -19,6 +19,7 @@ export class SmpProvider extends DfuProvider {
       hasTestStep: true,
       chunkConfigurable: true,
       multiObject: false,
+      hasCancel: true,
     };
   }
 
@@ -68,6 +69,15 @@ export class SmpProvider extends DfuProvider {
       await this._mcuMgr.stop();
       this._mcuMgr = null;
     }
+  }
+
+  cancel() {
+    this._mcuMgr?.cancelUpload();
+  }
+
+  async eraseSlot() {
+    if (!this._mcuMgr) throw new Error('Manager not attached');
+    await this._mcuMgr.cmdImageErase();
   }
 
   async readState() {

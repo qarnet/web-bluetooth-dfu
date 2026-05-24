@@ -222,6 +222,16 @@ export class AppController extends EventTarget {
     this.emit('slots-updated', { slots });
   }
 
+  async eraseSlot() {
+    this._assertState(STATES.CONNECTED);
+    if (!this._provider || !this._provider.eraseSlot) {
+      throw new Error('Erase slot not supported by current protocol');
+    }
+    await this._provider.eraseSlot();
+    const slots = await this._provider.readState();
+    this.emit('slots-updated', { slots });
+  }
+
   // ── DFU ───────────────────────────────────────────────────────────────────
 
   async runUpdate() {
@@ -253,6 +263,7 @@ export class AppController extends EventTarget {
   /** Cancel the currently-running upload (or confirm). */
   cancel() {
     this._abortCtrl?.abort('user-cancel');
+    this._provider?.cancel();
   }
 
   async confirm() {

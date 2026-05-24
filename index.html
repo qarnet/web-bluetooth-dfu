@@ -78,6 +78,9 @@
     .btn-danger:hover:not(:disabled)    { background: #7f1d1d; }
     .btn-green     { background: #15803d; color: #fff; width: 100%; padding: 0.75rem; font-size: 0.9rem; }
     .btn-green:hover:not(:disabled) { background: #16a34a; }
+    .update-row { display: flex; gap: 0.5rem; }
+    .update-row .btn-green { flex: 1; }
+    .btn-cancel { padding: 0.75rem; font-size: 0.85rem; }
 
     .file-label {
       display: inline-block;
@@ -123,6 +126,12 @@
     .fw-info-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; }
     .fw-info-label { color: #64748b; }
     .fw-info-value { color: #e2e8f0; font-family: monospace; }
+    .reliable-mode-row {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.85rem; color: #94a3b8; margin-top: 0.5rem;
+    }
+    .reliable-mode-row input[type=checkbox] { accent-color: #3b82f6; }
+    .reliable-mode-label { cursor: help; }
 
     .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
@@ -132,6 +141,17 @@
     }
 
     .slots { display: flex; flex-direction: column; gap: 0.4rem; }
+    .btn-erase {
+      margin-top: 0.5rem;
+      font-size: 0.8rem;
+      padding: 0.4rem 0.8rem;
+      background: #713f12;
+      color: #fde68a;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    .btn-erase:hover:not(:disabled) { background: #92400e; }
     .slot {
       background: #0f1117;
       border-radius: 7px;
@@ -259,6 +279,12 @@
         <div class="fw-info-row"><span class="fw-info-label">Planned update:</span> <span class="fw-info-value" id="fw-info-planned"></span></div>
         <div class="fw-info-row"><span class="fw-info-label">Currently running:</span> <span class="fw-info-value" id="fw-info-current"></span></div>
       </div>
+      <div class="reliable-mode-row" id="reliable-mode-row" style="display:none">
+        <label class="reliable-mode-label" title="Uses write-with-response for every packet. Slower (~2×) but catches silent write failures earlier. Useful on noisy RF links.">
+          <input type="checkbox" id="reliable-mode-check" />
+          Reliable mode (slower, safer)
+        </label>
+      </div>
     </section>
 
     <section id="sec-device">
@@ -290,12 +316,16 @@
       </div>
       <section id="sec-slots">
         <div class="slots" id="slots"></div>
+        <button class="btn-secondary btn-erase" id="btn-erase-slot" style="display:none">Erase slot 1</button>
       </section>
     </section>
 
     <section id="sec-update">
       <h2>Update</h2>
-      <button class="btn-green" id="btn-dfu" disabled>Update Firmware</button>
+      <div class="update-row">
+        <button class="btn-green" id="btn-dfu" disabled>Update Firmware</button>
+        <button class="btn-secondary btn-cancel" id="btn-cancel" disabled>Cancel</button>
+      </div>
       <button class="btn-green" id="btn-confirm" style="display:none" disabled>Confirm Update</button>
       <div class="progress-wrap" id="progress-wrap" style="display:none">
         <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width:0%"></div></div>

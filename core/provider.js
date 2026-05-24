@@ -14,6 +14,7 @@ export class DfuProvider extends DfuEventTarget {
       hasTestStep: false,
       chunkConfigurable: false,
       multiObject: false,
+      hasCancel: false,
     };
   }
 
@@ -34,4 +35,7 @@ export class DfuProvider extends DfuEventTarget {
 
   /** Stop notifications, drop listeners (does NOT disconnect GATT). */
   async detach() { /* no-op by default */ }
+
+  /** Cancel an in-progress upload. */
+  cancel() { /* no-op by default */ }
 }
