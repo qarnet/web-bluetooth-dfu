@@ -4,6 +4,14 @@ Browser-based firmware updater for nRF devices over Bluetooth LE.
 Supports **SMP / MCUboot** (Zephyr / nRF Connect SDK) and **Nordic Secure DFU**
 (nRF5 SDK) protocols with automatic detection.
 
+Supports three DFU modes:
+
+| Mode | Protocol | Image | Multi-image | Test Status |
+|---|---|---|---|---|
+| **SMP / MCUboot** | Zephyr / NCS | `.bin` (signed) | Slot upload + test + confirm | ✅ Passing |
+| **Nordic Secure DFU** | nRF5 SDK 17.1.0 | `.zip` (single) | Init + firmware transfer | ✅ Passing |
+| **Nordic Secure DFU Multi-image** | nRF5 SDK 17.1.0 | `.zip` (base + app) | Base → reboot → app | ✅ Passing |
+
 No installation. No build step. Open the page, pick a file, flash.
 
 ---
