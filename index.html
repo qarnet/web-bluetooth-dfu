@@ -106,12 +106,23 @@
 
 
     .multi-image-row {
-      display: flex; align-items: center; gap: 0.75rem;
-      font-size: 0.85rem; color: #94a3b8; margin-top: 0.25rem;
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.85rem; color: #94a3b8; margin-top: 0.5rem;
     }
     .multi-image-row input[type=checkbox] { accent-color: #3b82f6; }
     .multi-image-row.disabled { opacity: 0.5; }
     .multi-image-info { font-size: 0.75rem; color: #64748b; }
+    .firmware-info {
+      display: flex; flex-direction: column; gap: 0.3rem;
+      margin-top: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      background: #161b27;
+      border: 1px solid #334155;
+      border-radius: 7px;
+    }
+    .fw-info-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; }
+    .fw-info-label { color: #64748b; }
+    .fw-info-value { color: #e2e8f0; font-family: monospace; }
 
     .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; }
 
@@ -243,6 +254,10 @@
           Multi-image update (SoftDevice + Application)
         </label>
         <span class="multi-image-info" id="multi-image-info"></span>
+      </div>
+      <div class="firmware-info" id="firmware-info" style="display:none">
+        <div class="fw-info-row"><span class="fw-info-label">Planned update:</span> <span class="fw-info-value" id="fw-info-planned"></span></div>
+        <div class="fw-info-row"><span class="fw-info-label">Currently running:</span> <span class="fw-info-value" id="fw-info-current"></span></div>
       </div>
     </section>
 

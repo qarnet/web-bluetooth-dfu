@@ -106,6 +106,13 @@ export class SmpProvider extends DfuProvider {
     const magic = new DataView(data.buffer, data.byteOffset).getUint32(0, true);
     if (magic !== 0x96f3b83d) throw new Error('Bad MCUboot magic — use zephyr.signed.bin');
     this._firmware = data;
+    // Parse version from MCUboot header (offset 20: major, minor, revision)
+    const view = new DataView(data.buffer, data.byteOffset);
+    this._firmwareVersion = `${view.getUint8(20)}.${view.getUint8(21)}.${view.getUint16(22, true)}`;
+  }
+
+  get firmwareVersion() {
+    return this._firmwareVersion;
   }
 
   async runUpdate() {

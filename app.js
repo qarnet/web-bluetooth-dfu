@@ -36,6 +36,11 @@ const multiImageRow   = document.getElementById('multi-image-row');
 const multiImageCheck = document.getElementById('multi-image-check');
 const multiImageInfo  = document.getElementById('multi-image-info');
 
+// Firmware version display refs
+const firmwareInfo    = document.getElementById('firmware-info');
+const fwInfoPlanned   = document.getElementById('fw-info-planned');
+const fwInfoCurrent   = document.getElementById('fw-info-current');
+
 // ── State ────────────────────────────────────────────────────────────────────
 
 let scanTimeoutId;
@@ -43,11 +48,20 @@ let scanTimeoutId;
 // ── Controller event wiring ──────────────────────────────────────────────────
 
 controller.addEventListener('firmware-loaded', (e) => {
-  const { name, size, protocol, nordicInfo } = e.detail;
+  const { name, size, protocol, nordicInfo, version } = e.detail;
   fileNameEl.textContent = name;
   fileSizeEl.textContent = `${(size / 1024).toFixed(1)} KB`;
   showProtocol(protocol);
   updateDfuButton();
+
+  // Show planned update version if available
+  if (version) {
+    firmwareInfo.style.display = '';
+    fwInfoPlanned.textContent = version;
+  } else if (protocol === 'nordic') {
+    firmwareInfo.style.display = '';
+    fwInfoPlanned.textContent = 'Nordic Secure DFU package';
+  }
 
   // Multi-image checkbox for Nordic packages
   if (protocol === 'nordic' && nordicInfo) {
@@ -56,9 +70,8 @@ controller.addEventListener('firmware-loaded', (e) => {
     if (hasBase && hasApp) {
       multiImageRow.style.display = '';
       multiImageCheck.disabled = false;
-      multiImageCheck.checked = false; // unchecked by default
+      multiImageCheck.checked = false;
       multiImageInfo.textContent = `Contains: ${nordicInfo.types.join(', ')}`;
-      // Push checkbox state into provider
       const provider = controller._provider;
       if (provider && provider.setMultiImage) {
         provider.setMultiImage(false);
@@ -76,11 +89,18 @@ controller.addEventListener('firmware-loaded', (e) => {
   }
 });
 
+controller.addEventListener('device-version', (e) => {
+  fwInfoCurrent.textContent = e.detail.version || 'unknown';
+});
+
 controller.addEventListener('firmware-unloaded', () => {
   fileNameEl.textContent = '';
   fileSizeEl.textContent = '';
   showProtocol(null);
   multiImageRow.style.display = 'none';
+  firmwareInfo.style.display = 'none';
+  fwInfoPlanned.textContent = '';
+  fwInfoCurrent.textContent = '';
   updateDfuButton();
 });
 

@@ -74,6 +74,19 @@ export class AppController extends EventTarget {
 
     const payload = { name: file.name, size: data.byteLength, protocol: sig };
 
+    // Extract firmware version from file
+    if (sig === 'smp') {
+      try {
+        const view = new DataView(data.buffer, data.byteOffset);
+        const major = view.getUint8(20);
+        const minor = view.getUint8(21);
+        const revision = view.getUint16(22, true);
+        payload.version = `${major}.${minor}.${revision}`;
+      } catch {
+        // Ignore version parse errors
+      }
+    }
+
     // For Nordic ZIPs, parse manifest metadata so the UI can show multi-image info
     if (sig === 'nordic') {
       try {
@@ -163,6 +176,11 @@ export class AppController extends EventTarget {
         try {
           const slots = await provider.readState();
           this.emit('slots-updated', { slots });
+          // Emit current device version for the UI
+          const activeSlot = slots.find((s) => s.active);
+          if (activeSlot?.version) {
+            this.emit('device-version', { version: activeSlot.version });
+          }
         } catch (err) {
           this.emit('log', { message: err.message, level: 'error' });
         }
