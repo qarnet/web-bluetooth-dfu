@@ -246,7 +246,7 @@ export class SecureDfu extends DfuEventTarget {
     view.setUint32(0, end - start, LITTLE_ENDIAN);
 
     return this.sendControl(createType, view.buffer)
-      .then(() => this.transferData(buffer.slice(start, end), start))
+      .then(() => this.transferData(buffer.slice(start, end), buffer.byteLength, start))
       .then(() => this.sendControl(OPERATIONS.CACULATE_CHECKSUM))
       .then(response => {
         const crc = response.getUint32(4, LITTLE_ENDIAN);
@@ -271,16 +271,16 @@ export class SecureDfu extends DfuEventTarget {
       });
   }
 
-  transferData(data, offset, start = 0) {
+  transferData(data, totalBytes, start = 0) {
     const end = Math.min(start + PACKET_SIZE, data.byteLength);
     const packet = data.slice(start, end);
 
     return this._packetChar.writeValueWithoutResponse(new Uint8Array(packet))
       .then(() => this.delayPromise(this._delay))
       .then(() => {
-        this.progress(offset + end, data.byteLength, 'firmware');
+        this.progress(start + end, totalBytes, 'firmware');
         if (end < data.byteLength) {
-          return this.transferData(data, offset, end);
+          return this.transferData(data, totalBytes, end);
         }
       });
   }
