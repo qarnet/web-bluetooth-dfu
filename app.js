@@ -7,7 +7,7 @@ const fileInput       = document.getElementById('file-input');
 const fileLabel       = document.getElementById('file-label');
 const fileNameEl      = document.getElementById('file-name');
 const fileSizeEl      = document.getElementById('file-size');
-const chunkRow        = document.getElementById('chunk-row');
+const fileRow         = document.querySelector('.file-row');
 const chunkSizeInput  = document.getElementById('chunk-size');
 const protocolBadge   = document.getElementById('protocol-badge');
 const btnConnect      = document.getElementById('btn-connect');
@@ -257,6 +257,34 @@ fileInput.addEventListener('change', async () => {
   const file = fileInput.files[0];
   if (!file) return;
 
+  try {
+    await controller.loadFirmware(file);
+  } catch (err) {
+    log(err.message, 'error');
+    controller.unloadFirmware();
+  }
+});
+
+// ── Drag and drop ────────────────────────────────────────────────────────────
+
+['dragenter', 'dragover', 'dragleave', 'drop'].forEach((evt) => {
+  fileRow.addEventListener(evt, (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  });
+});
+
+['dragenter', 'dragover'].forEach((evt) => {
+  fileRow.addEventListener(evt, () => fileRow.classList.add('drag-active'));
+});
+
+['dragleave', 'drop'].forEach((evt) => {
+  fileRow.addEventListener(evt, () => fileRow.classList.remove('drag-active'));
+});
+
+fileRow.addEventListener('drop', async (e) => {
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
   try {
     await controller.loadFirmware(file);
   } catch (err) {

@@ -7,19 +7,7 @@ future work that is **not yet scheduled** but has been identified as valuable.
 
 ## UI / UX
 
-### Drag-and-drop file input (priority: high)
-
-Currently the user must click the "Choose file" button and use the OS picker.
-Drag-and-drop onto the firmware section is a small but significant UX win.
-
-**Scope:**
-- Add `dragover` / `drop` event listeners to `#sec-firmware`
-- Apply visual feedback (border highlight) on drag
-- Reuse existing `fileInput.dispatchEvent(new Event('change'))` or call the
-  same file-loading logic directly
-- No change to validation/providers needed — just a new input path
-
-**Estimated effort:** 1 commit, ~20 lines of JS + 5 lines of CSS.
+- [x] **Drag-and-drop file input** — shipped. Drop a `.bin` or `.zip` anywhere onto the Firmware section. Visual border highlight (`drag-active` class) on `dragenter`/`dragover`, removed on `dragleave`/`drop`. Same validation and controller path as the file picker.
 
 ---
 

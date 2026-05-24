@@ -90,7 +90,15 @@
     .file-label:hover { background: #475569; }
     .file-label.disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
 
-    .file-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }
+    .file-row {
+      display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+      border: 2px dashed transparent; border-radius: 8px; padding: 0.75rem; margin: -0.75rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .file-row.drag-active {
+      border-color: #3b82f6;
+      background: rgba(59, 130, 246, 0.08);
+    }
     .file-name { font-size: 0.875rem; color: #4ade80; }
 
     .chunk-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; color: #64748b; }
