@@ -38,7 +38,11 @@ export class BleCharacteristic {
   }
 
   async startNotifications()  { await this.#char.startNotifications(); return this; }
-  async stopNotifications()   { await this.#char.stopNotifications();  return this; }
+  async stopNotifications() {
+    try { await this.#char.stopNotifications(); }
+    catch (e) { /* ignore D-Bus "Not connected" on teardown */ }
+    return this;
+  }
 
   // Write Without Response (SMP + Nordic Packet)
   async writeValueWithoutResponse(chunk) {

@@ -18,7 +18,7 @@ V2_VER  := 2.0.0
 
 WEST := nrfutil sdk-manager toolchain launch --ncs-version $(NCS) --chdir $(NCS_DIR) -- west
 
-.PHONY: build build-v1 build-v2 flash test test-nordic dfu serve serve-lan harness-deps browser-test browser-test-headless browser-test-nordic clean
+.PHONY: build build-v1 build-v2 flash test test-nordic dfu serve serve-lan harness-deps browser-test browser-test-headless browser-test-nordic browser-test-nordic-headless browser-test-nordic-multi browser-test-nordic-multi-headless clean
 
 build: build-v1 build-v2
 
@@ -62,7 +62,7 @@ browser-test-nordic:
 
 browser-test-nordic-headless:
 	$(if $(ZIP),, $(error ZIP variable not set. Usage: make browser-test-nordic-headless ZIP=path/to/package.zip))
-	HEADLESS=1 xvfb-run -a --server-args="-screen 0 1280x900x24" \
+	xvfb-run -a --server-args="-screen 0 1280x900x24" \
 	  node $(REPO)/tools/nordic-browser-dfu-test.mjs $(ZIP)
 
 # Multi-image Nordic browser DFU test
@@ -72,7 +72,7 @@ browser-test-nordic-multi:
 
 browser-test-nordic-multi-headless:
 	$(if $(ZIP),, $(error ZIP variable not set. Usage: make browser-test-nordic-multi-headless ZIP=path/to/package.zip))
-	HEADLESS=1 xvfb-run -a --server-args="-screen 0 1280x900x24" \
+	xvfb-run -a --server-args="-screen 0 1280x900x24" \
 	  node $(REPO)/tools/nordic-browser-dfu-test.mjs --multi-image $(ZIP)
 
 clean:

@@ -251,7 +251,7 @@ function setPhase(label) {
 function showProtocol(providerId) {
   const p = providerId === 'smp' ? 'SMP / MCUboot' : providerId === 'nordic' ? 'Nordic Secure DFU' : '';
   protocolBadge.textContent = p;
-  protocolBadge.style.display = p ? '' : 'none';
+  protocolBadge.style.display = p ? 'inline' : 'none';
   protocolBadge.dataset.protocol = providerId || '';
 }
 

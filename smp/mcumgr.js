@@ -177,8 +177,8 @@ export class MCUManager {
 
       if ((data.rc === 0 || data.rc === undefined) && data.off !== undefined) {
         this._consecutiveTimeouts = 0;
+        this._lastAckOffset = data.off;
         this._uploadOffset = data.off;
-        this._lastAckOffset = data.off;  // Track for resume
         this._uploadNext();
         return;
       }
@@ -262,7 +262,7 @@ export class MCUManager {
         }
       }
 
-      this._uploadNext();
+      this._uploadNext().catch(() => {}); // write failures already handled inside _uploadNext
     }, this._chunkTimeout);
 
     const nmpOverhead = 8;
@@ -282,7 +282,21 @@ export class MCUManager {
     const length = this._mtu - encoded.byteLength - nmpOverhead;
     message.data = new Uint8Array(this._uploadImage.slice(this._uploadOffset, this._uploadOffset + length));
 
-    await this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_UPLOAD, message);
+    try {
+      await this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_UPLOAD, message);
+    } catch (writeErr) {
+      // Write failed (likely disconnect) — treat as error and stop upload
+      if (this._uploadTimeout) { clearTimeout(this._uploadTimeout); this._uploadTimeout = null; }
+      this._uploadIsInProgress = false;
+      this._logger.error(`Upload write failed: ${writeErr.message || writeErr}`);
+      if (this._imageUploadErrorCallback) {
+        this._imageUploadErrorCallback({
+          error: `Upload write failed: ${writeErr.message || writeErr}`,
+          consecutiveTimeouts: this._consecutiveTimeouts,
+          totalTimeouts: this._totalTimeouts,
+        });
+      }
+    }
   }
 
   async cmdUpload(image, slot = 0, startOffset = 0) {

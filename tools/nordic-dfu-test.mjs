@@ -6,6 +6,10 @@
 //
 // Usage:  node nordic-dfu-test.mjs [--multi-image] <path-to-package.zip>
 // Env:    APP_NAME (default "Nordic_Buttonless"), BOOTLOADER_NAME (default "DfuTest")
+//
+// Note: SDK 17.1.0 stock sample's sdk_config.h sets NRF_DFU_BLE_ADV_NAME="DfuTest".
+// Custom-built bootloaders may use "DfuTarg" (the SDK header default) — override
+// BOOTLOADER_NAME accordingly.
 // Exit:   0 = transfer complete, 1 = failure, 2 = bad usage.
 
 import { EventEmitter } from 'node:events';
@@ -137,7 +141,7 @@ async function main() {
   info(`manifest type: ${image.type}, init=${image.initFile}, image=${image.imageFile}`);
 
   const appName = process.env.APP_NAME || 'Nordic_Buttonless';
-  const bootloaderName = process.env.BOOTLOADER_NAME || 'DfuTarg';
+  const bootloaderName = process.env.BOOTLOADER_NAME || 'DfuTest';
   info(`appName=${appName} bootloaderName=${bootloaderName} multiImage=${multiImage}`);
 
   // ── Single D-Bus/BlueZ context for the whole test ─────────────────────────
