@@ -55,6 +55,7 @@ const fwInfoCurrent   = document.getElementById('fw-info-current');
 
 let scanTimeoutId;
 let firmwareProtocol = null;
+const logHistory = [];
 
 // ── Controller event wiring ──────────────────────────────────────────────────
 
@@ -204,6 +205,7 @@ controller.addEventListener('error', (e) => {
 function log(text, level = 'info', recovery = null) {
   secLog.style.display = '';
   const ts = new Date().toLocaleTimeString();
+  const isoTs = new Date().toISOString();
   const el = document.createElement('div');
   el.className = `log-${level}`;
   el.innerHTML = `<span class="log-ts">${ts}</span>${text}`;
@@ -222,6 +224,7 @@ function log(text, level = 'info', recovery = null) {
 
   logEntries.appendChild(el);
   logEntries.scrollTop = logEntries.scrollHeight;
+  logHistory.push({ timestamp: isoTs, level, message: String(text) });
   console.log(`[${level.toUpperCase()}] ${text}`);
 }
 
@@ -543,6 +546,7 @@ btnReconnect.addEventListener('click', async () => {
 
 const btnCopyLog     = document.getElementById('btn-copy-log');
 const btnDownloadLog = document.getElementById('btn-download-log');
+const btnDownloadLogJson = document.getElementById('btn-download-log-json');
 
 function getLogText() {
   return Array.from(logEntries.children)
@@ -566,6 +570,21 @@ btnDownloadLog.addEventListener('click', () => {
   const a = document.createElement('a');
   a.href = url;
   a.download = `dfu-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+btnDownloadLogJson.addEventListener('click', () => {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    firmwareProtocol,
+    entries: logHistory,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `dfu-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
   a.click();
   URL.revokeObjectURL(url);
 });
