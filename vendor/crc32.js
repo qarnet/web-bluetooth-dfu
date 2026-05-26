@@ -1,4 +1,5 @@
 /** CRC-32 (IEEE 802.3) implementation matching Nordic's crc32_compute().
+ *  Provenance: project-local implementation (not vendored from a third-party package).
  *  Produces results identical to the reference test vector for '123456789'.
  */
 

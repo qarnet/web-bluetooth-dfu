@@ -217,7 +217,7 @@ Web Bluetooth requires a secure context (HTTPS or localhost). The project includ
 a small Python HTTPS server that auto-generates a self-signed certificate:
 
 ```bash
-cd path/to/web-smp-dfu
+cd path/to/web-bluetooth-dfu
 ./serve.py
 ```
 

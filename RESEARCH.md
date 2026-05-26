@@ -1,4 +1,4 @@
-# Missing Features Analysis: web-smp-dfu vs nRF5 SDK 17.1.0
+# Missing Features Analysis: web-bluetooth-dfu vs nRF5 SDK 17.1.0
 
 ## Methodology
 

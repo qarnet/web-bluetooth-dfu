@@ -1,4 +1,5 @@
 /** Ported from web-bluetooth-dfu examples/package.js to vanilla JS ESM.
+ * Source reference: https://github.com/thegecko/web-bluetooth-dfu (MIT License).
  * Requires vendor/jszip.mjs for ZIP parsing.
  */
 

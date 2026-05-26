@@ -1,5 +1,5 @@
 {
-  "name": "web-smp-dfu-tools",
+  "name": "web-bluetooth-dfu-tools",
   "private": true,
   "type": "module",
   "description": "Dev-only headless DFU test harness. Not part of the shipped app.",
@@ -18,5 +18,5 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "MIT"
 }

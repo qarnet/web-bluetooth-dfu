@@ -68,7 +68,7 @@ On the HIL host:
 mkdir actions-runner && cd actions-runner
 curl -o actions-runner-linux-x64-<version>.tar.gz -L <url>
 tar xzf actions-runner-linux-x64-<version>.tar.gz
-./config.sh --url https://github.com/qarnet/web-smp-dfu --token <token>
+./config.sh --url https://github.com/qarnet/web-bluetooth-dfu --token <token>
 sudo ./svc.sh install
 sudo ./svc.sh start
 ```

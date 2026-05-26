@@ -1,3 +1,8 @@
+/**
+ * Nordic Secure DFU provider wiring adapted from web-bluetooth-dfu project flow.
+ * Source reference: https://github.com/thegecko/web-bluetooth-dfu (MIT License).
+ */
+
 import { DfuProvider } from '../core/provider.js';
 import { SecureDfu } from './secure-dfu.js';
 import { SecureDfuPackage } from './package.js';

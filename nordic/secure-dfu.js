@@ -1,4 +1,5 @@
 /** Ported from web-bluetooth-dfu secure-dfu.ts to vanilla JS (ES module).
+ *  Source reference: https://github.com/thegecko/web-bluetooth-dfu (MIT License).
  *  Vanilla JS — no TypeScript, no external deps except core/events.js and vendor/crc32.js.
  */
 

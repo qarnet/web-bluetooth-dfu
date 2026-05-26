@@ -1,4 +1,4 @@
-# web-smp-dfu — agent guidance
+# web-bluetooth-dfu — agent guidance
 
 Browser-based firmware updater for nRF devices over Bluetooth LE.
 Supports **SMP / MCUboot** (Zephyr / nRF Connect SDK) and **Nordic Secure DFU**
