@@ -44,6 +44,25 @@ function info(msg)  { console.log(`  ${msg}`); }
 function pass(msg)  { console.log(`\n✓ ${msg}`); }
 function fail(msg)  { console.error(`\n✗ ${msg}`); }
 
+async function selectDeviceFromPrompt(devicePrompt, preferredNames, fallbackLabel) {
+  const exactNames = preferredNames.filter(Boolean);
+  try {
+    const device = await devicePrompt.waitForDevice(
+      (d) => exactNames.includes(d.name),
+      { timeout: 45_000 },
+    );
+    info(`found device: ${device.name} (${device.id})`);
+    await devicePrompt.select(device);
+    return;
+  } catch {
+    info(`no exact name match for [${exactNames.join(', ')}], trying first visible device`);
+  }
+
+  const anyDevice = await devicePrompt.waitForDevice(() => true, { timeout: 20_000 });
+  info(`selected fallback ${fallbackLabel}: ${anyDevice.name || '(unnamed)'} (${anyDevice.id})`);
+  await devicePrompt.select(anyDevice);
+}
+
 /** Parse MCUboot version from image header bytes. */
 function mcubootVersion(bytes) {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -166,13 +185,7 @@ async function main() {
     ]);
     info('device chooser appeared');
 
-    const bluetoothDevice = await devicePrompt.waitForDevice(
-      (d) => d.name === DEVICE_NAME,
-      { timeout: 25_000 },
-    );
-    info(`found device: ${bluetoothDevice.name} (${bluetoothDevice.id})`);
-
-    await devicePrompt.select(bluetoothDevice);
+    await selectDeviceFromPrompt(devicePrompt, [DEVICE_NAME, 'Zephyr'], 'connect target');
     info('device selected');
 
     // Wait for UI to show connected state
@@ -230,13 +243,7 @@ async function main() {
       ]);
       info('device chooser appeared for reconnect');
 
-      const bluetoothDevice2 = await devicePrompt2.waitForDevice(
-        (d) => d.name === DEVICE_NAME,
-        { timeout: 25_000 },
-      );
-      info(`found device: ${bluetoothDevice2.name}`);
-
-      await devicePrompt2.select(bluetoothDevice2);
+      await selectDeviceFromPrompt(devicePrompt2, [DEVICE_NAME, 'Zephyr'], 'reconnect target');
 
       await waitForPredicate(
         page,

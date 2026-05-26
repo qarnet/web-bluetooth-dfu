@@ -1,4 +1,4 @@
-import { ALL_OPTIONAL_SERVICES, REGISTRY, LEGACY_DFU_UUID } from '../core/registry.js';
+import { ALL_OPTIONAL_SERVICES, LEGACY_DFU_UUID } from '../core/registry.js';
 import { normalizeUuid } from '../core/filter-store.js';
 
 export const SMP_SERVICE_UUID     = '8d53dc1d-1db7-4cd3-868b-8a527460aa84';
@@ -164,15 +164,13 @@ function buildRequestArgs(filterConfig) {
     filters.push({ namePrefix: prefix });
   }
 
-  // Fallback defaults when the user left both fields empty
+  // If no explicit filter fields are set, do not inject implicit defaults.
+  // Empty filter means "show all" by design.
   if (filters.length === 0) {
-    filters.push(
-      { services: [REGISTRY.smp.serviceUuid] },
-      { services: [REGISTRY.nordic.serviceUuid] },
-      { namePrefix: REGISTRY.nordic.namePrefix },
-      { namePrefix: 'Nordic_Buttonless' },
-      { namePrefix: 'DfuTest' },
-    );
+    return {
+      acceptAllDevices: true,
+      optionalServices,
+    };
   }
 
   return { filters, optionalServices };

@@ -21,7 +21,9 @@ export class NordicProvider extends DfuProvider {
 
   constructor() {
     super();
-    this._dfu = null;
+    this._dfu = new SecureDfu(CRC32);
+    this._dfu.addEventListener('log',      (e) => this.emit('log',      e.detail));
+    this._dfu.addEventListener('progress', (e) => this.emit('progress', e.detail));
     this._appImage = null;
     this._baseImage = null;
     this._baseTransferred = false;
@@ -57,10 +59,6 @@ export class NordicProvider extends DfuProvider {
     const hasControl = chars.has(REGISTRY.nordic.controlUuid);
     const hasPacket  = chars.has(REGISTRY.nordic.packetUuid);
 
-    this._dfu = new SecureDfu(CRC32);
-    this._dfu.addEventListener('log', (e) => this.emit('log', e.detail));
-    this._dfu.addEventListener('progress', (e) => this.emit('progress', e.detail));
-
     if (!hasControl || !hasPacket) {
       this.emit('log', { message: 'Device in app mode — triggering buttonless DFU…', level: 'info' });
       const withBonds = chars.has(REGISTRY.nordic.buttonlessWithBondsUuid);
@@ -78,7 +76,9 @@ export class NordicProvider extends DfuProvider {
   }
 
   async detach() {
-    this._dfu = null;
+    // Leave this._dfu intact; SecureDfu.connect() cleans up its own listeners
+    // on the next attach. Nulling it here would break the auto-reconnect path
+    // where the same provider instance is re-attached to the continuation bootloader.
   }
 
   cancel() {
@@ -103,7 +103,6 @@ export class NordicProvider extends DfuProvider {
 
     this._baseImage = await pkg.getBaseImage();
     this._appImage  = await pkg.getAppImage();
-    this._baseTransferred = false;
 
     if (!this._baseImage && !this._appImage) {
       throw new Error('No application or base image found in the ZIP package');

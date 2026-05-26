@@ -39,6 +39,8 @@ export class AppController extends EventTarget {
     this._fileSig     = null;
     this._abortCtrl   = null;   // current operation abort controller
     this._autoReconnecting = false;
+    this._multiImageEnabled = false;
+    this._continuationActive = false; // true after SD phase auto-reconnect; triggers crash retry
   }
 
   // ── Public accessors (read-only for UI) ────────────────────────────────────
@@ -131,6 +133,7 @@ export class AppController extends EventTarget {
       if (!ProviderClass) throw new Error(`Unknown protocol: ${proto}`);
 
       const provider = new ProviderClass({ mtu: 128 });
+      provider.setMultiImage?.(this._multiImageEnabled);
       this._provider = provider;
 
       // Wire provider events straight through to the UI
@@ -154,6 +157,13 @@ export class AppController extends EventTarget {
 
       await provider.attach(connection);
       attachComplete = true;
+
+      // needs-reconnect (buttonless path) clears _connection synchronously.
+      // Do NOT emit 'connected' for the now-gone app-mode device.
+      if (!this._connection) {
+        this._setState(STATES.IDLE);
+        return;
+      }
 
       // If firmware was already loaded, push it into the new provider
       if (this._firmware) {
@@ -248,11 +258,27 @@ export class AppController extends EventTarget {
       await this._provider.loadFirmware(this._firmware.data);
       const result = await this._provider.runUpdate();
 
+      this._continuationActive = false;
       this._setState(STATES.CONNECTED);
-      if (!result?.needsConfirm) {
+      if (!result?.needsConfirm && !result?.needsContinue) {
         this.emit('update-complete', {});
       }
     } catch (err) {
+      if (this._continuationActive) {
+        // Continuation app DFU crashed — likely CREATE_DATA blocked on 38-page erase of SD data,
+        // exceeding BLE supervision timeout. The bootloader completes the erase anyway (blank-page
+        // check means the next attempt skips it), stays in DFU via GPREGRET, and re-advertises.
+        this._continuationActive = false;
+        this.emit('log', {
+          message: 'Continuation DFU crash (bank erase timeout) — retrying after reconnect…',
+          level: 'warn',
+        });
+        this.emit('needs-reconnect', { continuationTimeout: 15000 });
+        this._autoReconnect(15000);
+        // Do NOT setState(CONNECTED) — _autoReconnect drives IDLE → CONNECTING → CONNECTED.
+        // Throw so app.js resets the DFU button while reconnect runs in background.
+        throw err;
+      }
       this._setState(STATES.CONNECTED);
       throw err;
     } finally {
@@ -268,6 +294,11 @@ export class AppController extends EventTarget {
 
   setReliableMode(enabled) {
     this._provider?.setReliableMode(enabled);
+  }
+
+  setMultiImage(enabled) {
+    this._multiImageEnabled = !!enabled;
+    this._provider?.setMultiImage?.(this._multiImageEnabled);
   }
 
   async confirm() {
@@ -320,6 +351,7 @@ export class AppController extends EventTarget {
       await provider.attach(connection);
 
       this._setState(STATES.CONNECTED);
+      this._continuationActive = true;
       this.emit('connected', {
         deviceName: connection.device.name ?? 'Unknown',
         protocol: provider.constructor.id,
@@ -335,6 +367,7 @@ export class AppController extends EventTarget {
         }
       }
     } catch (err) {
+      this._continuationActive = false;
       this._setState(STATES.IDLE);
       this.emit('log', { message: `Auto-reconnect failed: ${err.message}`, level: 'error' });
       this.emit('needs-reconnect', {}); // notify UI to show manual Reconnect button

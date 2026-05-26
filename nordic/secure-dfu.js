@@ -84,6 +84,7 @@ export class SecureDfu extends DfuEventTarget {
     this._controlChar = null;
     this._packetChar = null;
     this._notifyCleanupFn = null;
+    this._disconnectCleanupFn = null;
     this._abortRequested = false;
     this._reliableMode = false;
   }
@@ -101,10 +102,20 @@ export class SecureDfu extends DfuEventTarget {
    *  directly instead of re-discovering via getCharacteristics().
    */
   async connect(device, characteristics = null) {
-    const off = _onDeviceDisconnect(device, () => {
+    // Remove stale listeners from prior connect to prevent late-firing from old device nulling chars
+    if (this._disconnectCleanupFn) { this._disconnectCleanupFn(); this._disconnectCleanupFn = null; }
+    if (this._notifyCleanupFn)     { this._notifyCleanupFn();     this._notifyCleanupFn = null; }
+
+    this._disconnectCleanupFn = _onDeviceDisconnect(device, () => {
+      console.log(`[SecureDFU] disconnect event fired t=${Date.now()} pending ops: ${Object.keys(this._notifyFns).join(',') || 'none'}`);
+      this._disconnectCleanupFn = null;
+      const pending = this._notifyFns;
       this._notifyFns = {};
       this._controlChar = null;
       this._packetChar = null;
+      for (const fn of Object.values(pending)) {
+        if (fn?.reject) fn.reject(new Error('Device disconnected'));
+      }
     });
 
     const ch = characteristics ?? await this._gattConnect(device);
@@ -126,14 +137,15 @@ export class SecureDfu extends DfuEventTarget {
     this._notifyCleanupFn = _onNotify(this._controlChar, this.handleNotification.bind(this));
     this.log("enabled control notifications");
 
-    // Enable receipt notifications (PRN) to reduce per-packet ACK overhead
+    // Disable PRN to avoid interleaving async receipt notifications with
+    // explicit checksum responses on the same opcode (0x03).
     try {
       const view = new DataView(new ArrayBuffer(2));
-      view.setUint16(0, 10, LITTLE_ENDIAN);
+      view.setUint16(0, 0, LITTLE_ENDIAN);
       await this.sendControl(OPERATIONS.RECEIPT_NOTIFICATIONS, view.buffer);
-      this.log("receipt notifications set to 10");
+      this.log("receipt notifications disabled (PRN=0)");
     } catch (err) {
-      this.log("failed to set receipt notifications: " + err.message);
+      this.log("failed to disable receipt notifications: " + err.message);
     }
   }
 
@@ -147,6 +159,8 @@ export class SecureDfu extends DfuEventTarget {
 
   handleNotification(event) {
     const view = new DataView(event.target.value.buffer);
+    const rawBytes = Array.from(new Uint8Array(view.buffer)).map(b => '0x' + b.toString(16).padStart(2,'0')).join(' ');
+    console.log(`[SecureDFU] notification: ${rawBytes}`);
     if (OPERATIONS.RESPONSE.indexOf(view.getUint8(0)) < 0) {
       throw new Error("Unrecognised control characteristic response notification");
     }
@@ -170,6 +184,7 @@ export class SecureDfu extends DfuEventTarget {
 
     if (error) {
       this.log(`notify: ${error}`);
+      console.error(`[SecureDFU] notify error op=0x${operation.toString(16)}: ${error}`);
       if (this._notifyFns[operation]) {
         this._rejectNotify(operation, error);
       }
@@ -197,19 +212,17 @@ export class SecureDfu extends DfuEventTarget {
     this._notifyFns[operation[0]] = { resolve: null, reject: null, value };
 
     const write = async () => {
-      try {
-        await characteristic.writeValueWithResponse(value);
-      } catch (e) {
-        this.log(e);
-        await this.delayPromise(500);
-        await characteristic.writeValueWithResponse(value);
-      }
+      const writeMethod = characteristic.writeValueWithResponse.bind(characteristic);
+      return this._writePacketWithRetry(writeMethod, value);
     };
 
     return new Promise((resolve, reject) => {
       this._notifyFns[operation[0]].resolve = resolve;
       this._notifyFns[operation[0]].reject  = reject;
-      write();
+      write().catch((err) => {
+        delete this._notifyFns[operation[0]];
+        reject(err);
+      });
     });
   }
 
@@ -251,14 +264,19 @@ export class SecureDfu extends DfuEventTarget {
       });
   }
 
-  transferObject(buffer, createType, maxSize, offset) {
+  transferObject(buffer, createType, maxSize, offset, crcFailStreak = 0) {
+    const MAX_CRC_FAIL_STREAK = 6;
+    if (crcFailStreak >= MAX_CRC_FAIL_STREAK) {
+      throw new Error(`Object validation failed ${MAX_CRC_FAIL_STREAK} times at offset ${offset}`);
+    }
+
     const start = offset - offset % maxSize;
     const end = Math.min(start + maxSize, buffer.byteLength);
     const view = new DataView(new ArrayBuffer(4));
     view.setUint32(0, end - start, LITTLE_ENDIAN);
 
     return this.sendControl(createType, view.buffer)
-      .then(() => this.transferData(buffer.slice(start, end), buffer.byteLength, start))
+      .then(() => this.transferData(buffer.slice(start, end), buffer.byteLength, 0, start))
       .then(() => this.sendControl(OPERATIONS.CACULATE_CHECKSUM))
       .then(response => {
         const crc = response.getUint32(4, LITTLE_ENDIAN);
@@ -267,16 +285,27 @@ export class SecureDfu extends DfuEventTarget {
 
         if (this.checkCrc(data, crc)) {
           this.log(`written ${transferred} bytes`);
+          const execT0 = Date.now();
+          console.log(`[SecureDFU] CRC OK, sending EXECUTE t=${execT0} (transferred=${transferred}, type=${createType[1]})`);
           return this.sendControl(OPERATIONS.EXECUTE)
-            .then(() => transferred);
+            .then(() => { console.log(`[SecureDFU] EXECUTE succeeded dt=${Date.now()-execT0}ms (transferred=${transferred})`); return { transferred, ok: true }; })
+            .catch(err => { console.error(`[SecureDFU] EXECUTE failed dt=${Date.now()-execT0}ms: ${err}`); throw err; });
         } else {
           this.log('object failed to validate');
-          return transferred;
+          // Slow down slightly after CRC failures; fast command writes can
+          // overrun BlueZ/Web Bluetooth flow control on some stacks.
+          if (this._delay < 10) this._delay = 10;
+          return { transferred, ok: false };
         }
       })
-      .then((transferred) => {
-        if (end < buffer.byteLength) {
-          return this.transferObject(buffer, createType, maxSize, transferred);
+      .then(({ transferred, ok }) => {
+        if (!ok && transferred <= start) {
+          return this.transferObject(buffer, createType, maxSize, start, crcFailStreak + 1);
+        }
+
+        if (end < buffer.byteLength || !ok) {
+          const nextStreak = ok ? 0 : crcFailStreak + 1;
+          return this.transferObject(buffer, createType, maxSize, transferred, nextStreak);
         } else {
           this.log('transfer complete');
         }
@@ -293,7 +322,7 @@ export class SecureDfu extends DfuEventTarget {
     this.log(`Reliable mode ${this._reliableMode ? 'enabled' : 'disabled'}`);
   }
 
-  transferData(data, totalBytes, start = 0) {
+  transferData(data, totalBytes, start = 0, globalOffset = 0) {
     if (this._abortRequested) {
       throw new Error('Transfer cancelled by user');
     }
@@ -304,14 +333,35 @@ export class SecureDfu extends DfuEventTarget {
       ? this._packetChar.writeValueWithResponse.bind(this._packetChar)
       : this._packetChar.writeValueWithoutResponse.bind(this._packetChar);
 
-    return writeMethod(new Uint8Array(packet))
+    return this._writePacketWithRetry(writeMethod, new Uint8Array(packet))
       .then(() => this.delayPromise(this._delay))
       .then(() => {
-        this.progress(start + end, totalBytes, 'firmware');
+        this.progress(globalOffset + end, totalBytes, 'firmware');
         if (end < data.byteLength) {
-          return this.transferData(data, totalBytes, end);
+          return this.transferData(data, totalBytes, end, globalOffset);
         }
       });
+  }
+
+  async _writePacketWithRetry(writeMethod, chunk) {
+    const maxAttempts = 6;
+    let lastErr;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await writeMethod(chunk);
+      } catch (err) {
+        lastErr = err;
+        if (!this._isTransientWriteError(err)) throw err;
+        await this.delayPromise(10 * (attempt + 1));
+      }
+    }
+    throw lastErr;
+  }
+
+  _isTransientWriteError(err) {
+    const type = err?.type || '';
+    const msg = String(err?.message || err || '');
+    return type === 'org.bluez.Error.InProgress' || /in progress/i.test(msg);
   }
 
   checkCrc(buffer, crc) {

@@ -78,10 +78,7 @@ controller.addEventListener('firmware-loaded', (e) => {
       multiImageCheck.disabled = false;
       multiImageCheck.checked = false;
       multiImageInfo.textContent = `Contains: ${nordicInfo.types.join(', ')}`;
-      const provider = controller._provider;
-      if (provider && provider.setMultiImage) {
-        provider.setMultiImage(false);
-      }
+      controller.setMultiImage(false);
     } else {
       multiImageRow.style.display = '';
       multiImageCheck.disabled = true;
@@ -117,6 +114,9 @@ controller.addEventListener('connected', (e) => {
   configureUi(capabilities);
   showConnected(true);
   clearScanTimeout();
+  // Hide reconnect button — valid for both manual and auto-reconnects
+  btnReconnect.style.display = 'none';
+  btnReconnect.textContent = 'Reconnect';
   if (capabilities.hasSlots) {
     controller.refreshSlots().catch((err) => log(err.message, 'error'));
   }
@@ -393,10 +393,7 @@ serviceUuidInput.addEventListener('input', saveCurrentFilters);
 // ── Multi-image checkbox ────────────────────────────────────────────────────
 
 multiImageCheck.addEventListener('change', () => {
-  const provider = controller._provider;
-  if (provider && provider.setMultiImage) {
-    provider.setMultiImage(multiImageCheck.checked);
-  }
+  controller.setMultiImage(multiImageCheck.checked);
 });
 
 function triggerFilterAttention() {
