@@ -48,6 +48,7 @@ export class SmpProvider extends DfuProvider {
     this._mtu = opts.mtu || 244;
     this._firmware = null;
     this._resumeOffset = 0;
+    this._transferProfile = 'balanced';
   }
 
   async attach(session) {
@@ -63,6 +64,7 @@ export class SmpProvider extends DfuProvider {
                 error: (...a) => this.emit('log', { message: a.join(' '), level: 'error' }) },
     });
     await this._mcuMgr.start();
+    this._applyTransferProfile();
   }
 
   async detach() {
@@ -78,6 +80,43 @@ export class SmpProvider extends DfuProvider {
 
   setReliableMode(enabled) {
     this._mcuMgr?.setReliableMode(enabled);
+  }
+
+  setTransferProfile(profile) {
+    this._transferProfile = profile || 'balanced';
+    this._applyTransferProfile();
+  }
+
+  async echo(text = 'ping') {
+    if (!this._mcuMgr) throw new Error('Manager not attached');
+    const msg = await this._sendAndWait((done) => {
+      this._mcuMgr.onMessage((m) => {
+        if (m.op === 3 && m.group === 0 && m.id === 0) done(m.data);
+      });
+      this._mcuMgr.cmdEcho(text);
+    }, 10000);
+    return msg;
+  }
+
+  async deviceReset() {
+    if (!this._mcuMgr) throw new Error('Manager not attached');
+    try {
+      await this._mcuMgr.cmdReset();
+    } catch {
+      // Reset may disconnect before response.
+    }
+  }
+
+  _applyTransferProfile() {
+    if (!this._mcuMgr) return;
+    const profile = this._transferProfile;
+    if (profile === 'conservative') {
+      this._mcuMgr.configureTransport({ mtu: 128, chunkTimeout: 8000, maxConsecutiveTimeouts: 3, maxTotalTimeouts: 8, reliableMode: true });
+    } else if (profile === 'aggressive') {
+      this._mcuMgr.configureTransport({ mtu: 244, chunkTimeout: 4000, maxConsecutiveTimeouts: 2, maxTotalTimeouts: 6, reliableMode: false });
+    } else {
+      this._mcuMgr.configureTransport({ mtu: this._mtu, chunkTimeout: 5000, maxConsecutiveTimeouts: 2, maxTotalTimeouts: 6, reliableMode: false });
+    }
   }
 
   async eraseSlot() {

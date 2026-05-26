@@ -53,4 +53,27 @@ describe('NordicProvider image selection', () => {
     p.setImageSelection({ base: false, app: false });
     await assert.rejects(() => p.runUpdate(), /No Nordic image selected/);
   });
+
+  it('retries continuation readiness probe', async () => {
+    const p = makeProvider();
+    let attempts = 0;
+    p._continuationProbe = { attempts: 3, delayMs: 1 };
+    p._dfu.probeReady = async () => {
+      attempts += 1;
+      if (attempts < 3) throw new Error('not ready');
+      return { maxSize: 512, offset: 0, crc: 0 };
+    };
+    const ready = await p._probeContinuationReady();
+    assert.strictEqual(ready.maxSize, 512);
+    assert.strictEqual(attempts, 3);
+  });
+
+  it('applies conservative transfer profile settings', () => {
+    const p = makeProvider();
+    let reliable = null;
+    p._dfu.setReliableMode = (enabled) => { reliable = enabled; };
+    p.setTransferProfile('conservative');
+    assert.strictEqual(reliable, true);
+    assert.deepStrictEqual(p._continuationProbe, { attempts: 6, delayMs: 700 });
+  });
 });

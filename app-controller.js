@@ -38,11 +38,11 @@ export class AppController extends EventTarget {
     this._firmware    = null;
     this._fileSig     = null;
     this._abortCtrl   = null;   // current operation abort controller
-    this._autoReconnecting = false;
     this._nordicImageSelection = { base: false, app: true };
     this._continuationActive = false; // true after SD phase auto-reconnect; triggers crash retry
     this._nordicPrn = 0;
     this._awaitingReconnect = false;
+    this._transferProfile = 'balanced';
   }
 
   // ── Public accessors (read-only for UI) ────────────────────────────────────
@@ -86,6 +86,9 @@ export class AppController extends EventTarget {
         const minor = view.getUint8(21);
         const revision = view.getUint16(22, true);
         payload.version = `${major}.${minor}.${revision}`;
+        const digest = await crypto.subtle.digest('SHA-256', data);
+        const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+        payload.preflight = `MCUboot magic OK, sha256=${hash.slice(0, 16)}…`;
       } catch {
         // Ignore version parse errors
       }
@@ -97,6 +100,7 @@ export class AppController extends EventTarget {
         const { NordicProvider } = await import('./nordic/nordic-provider.js');
         const analysis = await NordicProvider.analyzePackage(data);
         payload.nordicInfo = analysis;
+        payload.preflight = `Nordic manifest: ${analysis.types.join(', ')}`;
       } catch (err) {
         this.emit('log', { message: `Failed to analyze Nordic package: ${err.message}`, level: 'warn' });
       }
@@ -137,6 +141,7 @@ export class AppController extends EventTarget {
       const provider = new ProviderClass({ mtu: 128 });
       provider.setImageSelection?.(this._nordicImageSelection);
       provider.setPrn?.(this._nordicPrn);
+      provider.setTransferProfile?.(this._transferProfile);
       this._provider = provider;
 
       // Wire provider events straight through to the UI
@@ -327,6 +332,23 @@ export class AppController extends EventTarget {
   setNordicPrn(value) {
     this._nordicPrn = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
     this._provider?.setPrn?.(this._nordicPrn);
+  }
+
+  setTransferProfile(profile) {
+    this._transferProfile = profile || 'balanced';
+    this._provider?.setTransferProfile?.(this._transferProfile);
+  }
+
+  async smpEcho(text = 'ping') {
+    this._assertState(STATES.CONNECTED);
+    if (!this._provider?.echo) throw new Error('Echo is not supported by current protocol');
+    return this._provider.echo(text);
+  }
+
+  async resetDevice() {
+    this._assertState(STATES.CONNECTED);
+    if (!this._provider?.deviceReset) throw new Error('Reset is not supported by current protocol');
+    return this._provider.deviceReset();
   }
 
   async confirm() {

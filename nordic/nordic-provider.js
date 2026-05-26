@@ -29,6 +29,8 @@ export class NordicProvider extends DfuProvider {
     this._baseTransferred = false;
     this._selection = { base: false, app: true };
     this._prn = 0;
+    this._transferProfile = 'balanced';
+    this._continuationProbe = { attempts: 3, delayMs: 400 };
   }
 
   /** Analyze a ZIP buffer without loading image data. */
@@ -100,6 +102,23 @@ export class NordicProvider extends DfuProvider {
     this._dfu?.setPacketReceiptNotifications(this._prn);
   }
 
+  setTransferProfile(profile) {
+    this._transferProfile = profile || 'balanced';
+    if (this._transferProfile === 'conservative') {
+      this.setPrn(0);
+      this._dfu?.setReliableMode?.(true);
+      this._continuationProbe = { attempts: 6, delayMs: 700 };
+    } else if (this._transferProfile === 'aggressive') {
+      this.setPrn(0);
+      this._dfu?.setReliableMode?.(false);
+      this._continuationProbe = { attempts: 2, delayMs: 250 };
+    } else {
+      this.setPrn(0);
+      this._dfu?.setReliableMode?.(false);
+      this._continuationProbe = { attempts: 3, delayMs: 400 };
+    }
+  }
+
   async readState() {
     return []; // Nordic Secure DFU does not expose image slots
   }
@@ -159,7 +178,7 @@ export class NordicProvider extends DfuProvider {
         return { needsContinue: true };
       }
       if (wantBase && this._baseTransferred) {
-        const readiness = await this._dfu.probeReady();
+        const readiness = await this._probeContinuationReady();
         this.emit('log', {
           message: `Continuation ready: init max=${readiness.maxSize} offset=${readiness.offset} crc=0x${readiness.crc.toString(16)}`,
           level: 'info',
@@ -215,6 +234,23 @@ export class NordicProvider extends DfuProvider {
     if (!globalThis.crypto?.subtle) return 'sha256-unavailable';
     const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
     return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async _probeContinuationReady() {
+    const { attempts, delayMs } = this._continuationProbe;
+    let lastErr = null;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        if (i > 0) {
+          this.emit('log', { message: `Continuation readiness retry ${i + 1}/${attempts}…`, level: 'warn' });
+        }
+        return await this._dfu.probeReady();
+      } catch (err) {
+        lastErr = err;
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+    throw lastErr || new Error('Continuation readiness check failed');
   }
 
   async confirm() {

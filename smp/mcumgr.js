@@ -8,6 +8,7 @@ const MGMT_OP_WRITE_RSP = 3;
 const MGMT_GROUP_ID_OS    = 0;
 const MGMT_GROUP_ID_IMAGE = 1;
 
+const OS_MGMT_ID_ECHO = 0;
 const OS_MGMT_ID_RESET = 5;
 
 const IMG_MGMT_ID_STATE  = 0;
@@ -100,6 +101,18 @@ export class MCUManager {
   setReliableMode(enabled) {
     this._reliableMode = !!enabled;
     this._logger.info(`Reliable mode ${this._reliableMode ? 'enabled' : 'disabled'}`);
+  }
+
+  configureTransport({ mtu, chunkTimeout, maxConsecutiveTimeouts, maxTotalTimeouts, reliableMode } = {}) {
+    if (Number.isFinite(mtu) && mtu > 0) this._mtu = Math.max(Math.floor(mtu), this._minMtu);
+    if (Number.isFinite(chunkTimeout) && chunkTimeout > 0) this._chunkTimeout = Math.floor(chunkTimeout);
+    if (Number.isFinite(maxConsecutiveTimeouts) && maxConsecutiveTimeouts > 0) {
+      this._maxConsecutiveTimeouts = Math.floor(maxConsecutiveTimeouts);
+    }
+    if (Number.isFinite(maxTotalTimeouts) && maxTotalTimeouts > 0) {
+      this._maxTotalTimeouts = Math.floor(maxTotalTimeouts);
+    }
+    if (typeof reliableMode === 'boolean') this.setReliableMode(reliableMode);
   }
 
   async _writeFragmented(frame) {
@@ -200,6 +213,7 @@ export class MCUManager {
   // ── High-level commands ────────────────────────────────────────────────────
 
   cmdReset() { return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_OS, OS_MGMT_ID_RESET); }
+  cmdEcho(text = 'ping') { return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_OS, OS_MGMT_ID_ECHO, { d: text }); }
   cmdImageState() { return this._sendMessage(MGMT_OP_READ,  MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_STATE); }
   cmdImageErase() { return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_ERASE, {}); }
   cmdImageTest(hash) {
