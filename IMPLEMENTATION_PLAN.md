@@ -28,7 +28,9 @@ Status:
 3. Add browser E2E assertions around continuation retry states.
 
 Status:
-- [ ] Not started.
+- [x] Continuation readiness retry/backoff policy implemented.
+- [x] Transfer profiles implemented (conservative/balanced/aggressive).
+- [x] Browser E2E reconnect/continuation assertions updated.
 
 ## Phase 3 - SMP power-user features
 
@@ -37,7 +39,9 @@ Status:
 3. Improve rc error translation and remediation hints.
 
 Status:
-- [ ] Not started.
+- [x] SMP utility commands added in UI (echo/reset).
+- [x] Read-only diagnostics actions added (slot refresh + diagnostics shortcut).
+- [x] RC translation hints are present and kept in provider mapping.
 
 ## Phase 4 - Product polish
 
@@ -46,4 +50,6 @@ Status:
 3. Expand docs with troubleshooting decision tree per protocol.
 
 Status:
-- [ ] Not started.
+- [x] Preflight metadata panel added.
+- [x] Session JSON export now includes protocol decisions and timestamps.
+- [x] Troubleshooting decision tree added.

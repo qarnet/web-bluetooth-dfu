@@ -211,3 +211,4 @@ All tests require a real nRF52840 DK connected to the machine running the test.
 
 See `TESTING.md` for the full build/flash/test loop.
 See `CI.md` for the hardware-in-loop CI activation guide (currently inactive).
+See `TROUBLESHOOTING.md` for common recovery steps and profile guidance.
