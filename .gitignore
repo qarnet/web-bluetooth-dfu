@@ -43,3 +43,6 @@ firmware/.cache
 # Auto-generated HTTPS certificates
 .localhost.pem
 .localhost-key.pem
+
+# direnv / Nix
+.direnv/
