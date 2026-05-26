@@ -54,6 +54,19 @@ const EXTENDED_ERROR = {
   0x0D: "The available space on the device is insufficient to hold the firmware"
 };
 
+const OP_NAMES = new Map([
+  [0x01, 'CREATE'],
+  [0x02, 'SET_PRN'],
+  [0x03, 'CALCULATE_CHECKSUM'],
+  [0x04, 'EXECUTE'],
+  [0x06, 'SELECT'],
+  [0x20, 'BUTTONLESS_ENTER_DFU'],
+]);
+
+function opName(op) {
+  return OP_NAMES.get(op) || `OP_0x${op.toString(16)}`;
+}
+
 /** Cross-platform helper: Web Bluetooth uses addEventListener; node-ble uses .on('disconnect') */
 function _onDeviceDisconnect(device, handler) {
   if (typeof device.addEventListener === 'function') {
@@ -87,6 +100,17 @@ export class SecureDfu extends DfuEventTarget {
     this._disconnectCleanupFn = null;
     this._abortRequested = false;
     this._reliableMode = false;
+    this._prn = 0;
+  }
+
+  isReady() {
+    return !!(this._controlChar && this._packetChar);
+  }
+
+  setPacketReceiptNotifications(value) {
+    const prn = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+    this._prn = prn;
+    this.log(`PRN configured: ${prn}`);
   }
 
   log(message) {
@@ -137,16 +161,8 @@ export class SecureDfu extends DfuEventTarget {
     this._notifyCleanupFn = _onNotify(this._controlChar, this.handleNotification.bind(this));
     this.log("enabled control notifications");
 
-    // Disable PRN to avoid interleaving async receipt notifications with
-    // explicit checksum responses on the same opcode (0x03).
-    try {
-      const view = new DataView(new ArrayBuffer(2));
-      view.setUint16(0, 0, LITTLE_ENDIAN);
-      await this.sendControl(OPERATIONS.RECEIPT_NOTIFICATIONS, view.buffer);
-      this.log("receipt notifications disabled (PRN=0)");
-    } catch (err) {
-      this.log("failed to disable receipt notifications: " + err.message);
-    }
+    // Keep connect path minimal and aligned with reference implementation.
+    // PRN is optional and can be enabled explicitly before transfer.
   }
 
   async _gattConnect(device, serviceUUID = SecureDfu.SERVICE_UUID) {
@@ -173,6 +189,7 @@ export class SecureDfu extends DfuEventTarget {
 
     if (result === 0x01) {
       const data = new DataView(view.buffer, 3);
+      console.log(`[SecureDFU] notify ok op=${opName(operation)}(0x${operation.toString(16)}) payload_len=${data.byteLength}`);
       this._resolveNotify(operation, data);
       return;
     } else if (result === 0x0B) {
@@ -184,7 +201,7 @@ export class SecureDfu extends DfuEventTarget {
 
     if (error) {
       this.log(`notify: ${error}`);
-      console.error(`[SecureDFU] notify error op=0x${operation.toString(16)}: ${error}`);
+      console.error(`[SecureDFU] notify error op=${opName(operation)}(0x${operation.toString(16)}): ${error}`);
       if (this._notifyFns[operation]) {
         this._rejectNotify(operation, error);
       }
@@ -201,6 +218,9 @@ export class SecureDfu extends DfuEventTarget {
   }
 
   async sendOperation(characteristic, operation, buffer) {
+    if (!characteristic) {
+      throw new Error('DFU characteristic unavailable (device disconnected)');
+    }
     const size = operation.length + (buffer ? buffer.byteLength : 0);
     const value = new Uint8Array(size);
     value.set(operation);
@@ -210,6 +230,9 @@ export class SecureDfu extends DfuEventTarget {
     }
 
     this._notifyFns[operation[0]] = { resolve: null, reject: null, value };
+
+    const txHex = Array.from(value).map((b) => b.toString(16).padStart(2, '0')).join(' ');
+    console.log(`[SecureDFU] tx t=${Date.now()} op=${opName(operation[0])}(0x${operation[0].toString(16)}) bytes=[${txHex}]`);
 
     const write = async () => {
       const writeMethod = characteristic.writeValueWithResponse.bind(characteristic);
@@ -221,6 +244,7 @@ export class SecureDfu extends DfuEventTarget {
       this._notifyFns[operation[0]].reject  = reject;
       write().catch((err) => {
         delete this._notifyFns[operation[0]];
+        console.error(`[SecureDFU] tx failed op=${opName(operation[0])}(0x${operation[0].toString(16)}): ${err?.message || err}`);
         reject(err);
       });
     });
@@ -242,13 +266,34 @@ export class SecureDfu extends DfuEventTarget {
     return this.transfer(buffer, 'firmware', OPERATIONS.SELECT_DATA, OPERATIONS.CREATE_DATA);
   }
 
+  async probeReady(selectType = OPERATIONS.SELECT_COMMAND) {
+    if (!this.isReady()) {
+      throw new Error('DFU transport not ready');
+    }
+    const response = await this.sendControl(selectType);
+    const maxSize = response.getUint32(0, LITTLE_ENDIAN);
+    const offset = response.getUint32(4, LITTLE_ENDIAN);
+    const crc = response.getUint32(8, LITTLE_ENDIAN);
+    return { maxSize, offset, crc };
+  }
+
   transfer(buffer, type, selectType, createType) {
-    return this.sendControl(selectType)
+    return Promise.resolve()
+      .then(async () => {
+        if (this._prn > 0) {
+          const view = new DataView(new ArrayBuffer(2));
+          view.setUint16(0, this._prn, LITTLE_ENDIAN);
+          await this.sendControl(OPERATIONS.RECEIPT_NOTIFICATIONS, view.buffer);
+          this.log(`receipt notifications configured (PRN=${this._prn})`);
+        }
+      })
+      .then(() => this.sendControl(selectType))
       .then(response => {
         // Nordic SELECT response layout: max_size(4) | offset(4) | crc(4)
         const maxSize = response.getUint32(0, LITTLE_ENDIAN);
         const offset  = response.getUint32(4, LITTLE_ENDIAN);
         const crc     = response.getUint32(8, LITTLE_ENDIAN);
+        console.log(`[SecureDFU] select ${type}: max=${maxSize} offset=${offset} crc=0x${crc.toString(16)}`);
 
         if (type === 'init' && offset === buffer.byteLength && this.checkCrc(buffer, crc)) {
           this.log('init packet already available, skipping transfer');
@@ -272,6 +317,7 @@ export class SecureDfu extends DfuEventTarget {
 
     const start = offset - offset % maxSize;
     const end = Math.min(start + maxSize, buffer.byteLength);
+    console.log(`[SecureDFU] transferObject type=${createType[1]} start=${start} end=${end} total=${buffer.byteLength} streak=${crcFailStreak}`);
     const view = new DataView(new ArrayBuffer(4));
     view.setUint32(0, end - start, LITTLE_ENDIAN);
 
@@ -396,6 +442,24 @@ export class SecureDfu extends DfuEventTarget {
         return this.update(device, init, firmware);
       }
       throw error;
+    }
+  }
+
+  disposeConnection() {
+    if (this._notifyCleanupFn) {
+      this._notifyCleanupFn();
+      this._notifyCleanupFn = null;
+    }
+    if (this._disconnectCleanupFn) {
+      this._disconnectCleanupFn();
+      this._disconnectCleanupFn = null;
+    }
+    const pending = this._notifyFns;
+    this._notifyFns = {};
+    this._controlChar = null;
+    this._packetChar = null;
+    for (const fn of Object.values(pending)) {
+      if (fn?.reject) fn.reject(new Error('DFU connection disposed'));
     }
   }
 

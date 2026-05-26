@@ -1,5 +1,8 @@
 import { controller } from './app-controller.js';
 import { loadFilterConfig, saveFilterConfig, isValidUuid, normalizeUuid } from './core/filter-store.js';
+import { shouldDisableDfuButton } from './ui/dfu-button-state.js';
+
+globalThis.dfuController = controller;
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 
@@ -35,7 +38,8 @@ const serviceUuidInput= document.getElementById('service-uuid');
 
 // Multi-image UI refs
 const multiImageRow   = document.getElementById('multi-image-row');
-const multiImageCheck = document.getElementById('multi-image-check');
+const nordicBaseCheck = document.getElementById('nordic-base-check');
+const nordicAppCheck  = document.getElementById('nordic-app-check');
 const multiImageInfo  = document.getElementById('multi-image-info');
 
 // Reliable mode UI refs
@@ -50,11 +54,13 @@ const fwInfoCurrent   = document.getElementById('fw-info-current');
 // ── State ────────────────────────────────────────────────────────────────────
 
 let scanTimeoutId;
+let firmwareProtocol = null;
 
 // ── Controller event wiring ──────────────────────────────────────────────────
 
 controller.addEventListener('firmware-loaded', (e) => {
   const { name, size, protocol, nordicInfo, version } = e.detail;
+  firmwareProtocol = protocol;
   fileNameEl.textContent = name;
   fileSizeEl.textContent = `${(size / 1024).toFixed(1)} KB`;
   showProtocol(protocol);
@@ -69,27 +75,24 @@ controller.addEventListener('firmware-loaded', (e) => {
     fwInfoPlanned.textContent = 'Nordic Secure DFU package';
   }
 
-  // Multi-image checkbox for Nordic packages
+  // Nordic image-selection checkboxes
   if (protocol === 'nordic' && nordicInfo) {
     const hasBase = nordicInfo.hasBase;
     const hasApp  = nordicInfo.hasApp;
-    if (hasBase && hasApp) {
-      multiImageRow.style.display = '';
-      multiImageCheck.disabled = false;
-      multiImageCheck.checked = false;
-      multiImageInfo.textContent = `Contains: ${nordicInfo.types.join(', ')}`;
-      controller.setMultiImage(false);
-    } else {
-      multiImageRow.style.display = '';
-      multiImageCheck.disabled = true;
-      multiImageCheck.checked = false;
-      multiImageInfo.textContent = hasApp
-        ? 'Application only (single-image)'
-        : (hasBase ? 'Base image only' : 'Unknown contents');
-    }
+    multiImageRow.style.display = '';
+    nordicBaseCheck.disabled = !hasBase;
+    nordicAppCheck.disabled = !hasApp;
+    nordicBaseCheck.checked = hasBase;
+    nordicAppCheck.checked = hasApp;
+    multiImageInfo.textContent = `Contains: ${nordicInfo.types.join(', ')}`;
+    controller.setNordicImageSelection({
+      base: nordicBaseCheck.checked,
+      app: nordicAppCheck.checked,
+    });
   } else {
     multiImageRow.style.display = 'none';
   }
+  updateDfuButton();
 });
 
 controller.addEventListener('device-version', (e) => {
@@ -97,10 +100,15 @@ controller.addEventListener('device-version', (e) => {
 });
 
 controller.addEventListener('firmware-unloaded', () => {
+  firmwareProtocol = null;
   fileNameEl.textContent = '';
   fileSizeEl.textContent = '';
   showProtocol(null);
   multiImageRow.style.display = 'none';
+  nordicBaseCheck.checked = false;
+  nordicBaseCheck.disabled = false;
+  nordicAppCheck.checked = false;
+  nordicAppCheck.disabled = false;
   firmwareInfo.style.display = 'none';
   fwInfoPlanned.textContent = '';
   fwInfoCurrent.textContent = '';
@@ -224,7 +232,15 @@ function isBusyState() {
 }
 
 function updateDfuButton() {
-  btnDfu.disabled = isBusyState() || !controller.hasFirmware || !controller.hasProvider;
+  btnDfu.disabled = shouldDisableDfuButton({
+    isBusy: isBusyState(),
+    hasFirmware: controller.hasFirmware,
+    hasProvider: controller.hasProvider,
+    firmwareProtocol,
+    nordicRowVisible: multiImageRow.style.display !== 'none',
+    nordicBaseChecked: nordicBaseCheck.checked,
+    nordicAppChecked: nordicAppCheck.checked,
+  });
 }
 
 function updateConfirmButton(enabled) {
@@ -390,11 +406,18 @@ scanAllCheck.addEventListener('change', () => {
 namePrefixInput.addEventListener('input', saveCurrentFilters);
 serviceUuidInput.addEventListener('input', saveCurrentFilters);
 
-// ── Multi-image checkbox ────────────────────────────────────────────────────
+// ── Nordic image selection checkboxes ───────────────────────────────────────
 
-multiImageCheck.addEventListener('change', () => {
-  controller.setMultiImage(multiImageCheck.checked);
-});
+function syncNordicImageSelection() {
+  controller.setNordicImageSelection({
+    base: nordicBaseCheck.checked,
+    app: nordicAppCheck.checked,
+  });
+  updateDfuButton();
+}
+
+nordicBaseCheck.addEventListener('change', syncNordicImageSelection);
+nordicAppCheck.addEventListener('change', syncNordicImageSelection);
 
 function triggerFilterAttention() {
   filterPanel.classList.add('filter-attention');

@@ -1,4 +1,4 @@
-import { connectToDevice, reconnectToDevice } from './bluetooth/connect.js';
+import { connectToDevice } from './bluetooth/connect.js';
 import { SmpProvider } from './smp/smp-provider.js';
 import { NordicProvider } from './nordic/nordic-provider.js';
 import { detectFromFile, detectFromDevice, resolveProtocol } from './core/detect.js';
@@ -39,8 +39,10 @@ export class AppController extends EventTarget {
     this._fileSig     = null;
     this._abortCtrl   = null;   // current operation abort controller
     this._autoReconnecting = false;
-    this._multiImageEnabled = false;
+    this._nordicImageSelection = { base: false, app: true };
     this._continuationActive = false; // true after SD phase auto-reconnect; triggers crash retry
+    this._nordicPrn = 0;
+    this._awaitingReconnect = false;
   }
 
   // ── Public accessors (read-only for UI) ────────────────────────────────────
@@ -133,7 +135,8 @@ export class AppController extends EventTarget {
       if (!ProviderClass) throw new Error(`Unknown protocol: ${proto}`);
 
       const provider = new ProviderClass({ mtu: 128 });
-      provider.setMultiImage?.(this._multiImageEnabled);
+      provider.setImageSelection?.(this._nordicImageSelection);
+      provider.setPrn?.(this._nordicPrn);
       this._provider = provider;
 
       // Wire provider events straight through to the UI
@@ -143,16 +146,21 @@ export class AppController extends EventTarget {
       provider.addEventListener('phase',     (e) => this.emit('phase',     e.detail));
       provider.addEventListener('needs-reconnect', (e) => {
         const detail = e.detail || {};
+        this._awaitingReconnect = true;
+        if (detail.continuationTimeout) {
+          this._continuationActive = true;
+        }
+        this.emit('log', {
+          message: `Provider requested reconnect (${JSON.stringify(detail) || 'no detail'})`,
+          level: 'info',
+        });
         this.emit('needs-reconnect', detail);
         if (attachComplete) {
           this._provider?.detach().catch(() => {});
         }
         this._connection = null;
-        // Only auto-reconnect for Nordic multi-image continuation.
-        // SMP confirm is a manual step; let the user click Reconnect.
-        if (detail.continuationTimeout) {
-          this._autoReconnect(detail.continuationTimeout);
-        }
+        // Use a single reconnect owner (UI/manual reconnect) to avoid races
+        // between auto-reconnect and explicit reconnect flows.
       });
 
       await provider.attach(connection);
@@ -175,6 +183,7 @@ export class AppController extends EventTarget {
       }
 
       this._setState(STATES.CONNECTED);
+      this._awaitingReconnect = false;
       this.emit('connected', {
         deviceName: connection.device.name ?? 'Unknown',
         protocol: proto,
@@ -258,7 +267,9 @@ export class AppController extends EventTarget {
       await this._provider.loadFirmware(this._firmware.data);
       const result = await this._provider.runUpdate();
 
-      this._continuationActive = false;
+      if (!result?.needsContinue) {
+        this._continuationActive = false;
+      }
       this._setState(STATES.CONNECTED);
       if (!result?.needsConfirm && !result?.needsContinue) {
         this.emit('update-complete', {});
@@ -270,13 +281,16 @@ export class AppController extends EventTarget {
         // check means the next attempt skips it), stays in DFU via GPREGRET, and re-advertises.
         this._continuationActive = false;
         this.emit('log', {
-          message: 'Continuation DFU crash (bank erase timeout) — retrying after reconnect…',
+          message: 'Continuation DFU crash (bank erase timeout) — reconnect and retry Update Firmware.',
           level: 'warn',
         });
-        this.emit('needs-reconnect', { continuationTimeout: 15000 });
-        this._autoReconnect(15000);
-        // Do NOT setState(CONNECTED) — _autoReconnect drives IDLE → CONNECTING → CONNECTED.
-        // Throw so app.js resets the DFU button while reconnect runs in background.
+        // Use explicit manual reconnect here. Auto-reconnect in this crash path can
+        // race with late disconnect events from the failed transfer and leave the UI
+        // in an indeterminate state.
+        this._provider?.detach().catch(() => {});
+        this._connection = null;
+        this._setState(STATES.IDLE);
+        this.emit('needs-reconnect', {});
         throw err;
       }
       this._setState(STATES.CONNECTED);
@@ -297,8 +311,22 @@ export class AppController extends EventTarget {
   }
 
   setMultiImage(enabled) {
-    this._multiImageEnabled = !!enabled;
-    this._provider?.setMultiImage?.(this._multiImageEnabled);
+    // Backward-compatible toggle: enabled => base+app, disabled => app only.
+    this.setNordicImageSelection({ base: !!enabled, app: true });
+  }
+
+  setNordicImageSelection(selection) {
+    const next = {
+      base: !!selection?.base,
+      app: !!selection?.app,
+    };
+    this._nordicImageSelection = next;
+    this._provider?.setImageSelection?.(next);
+  }
+
+  setNordicPrn(value) {
+    this._nordicPrn = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+    this._provider?.setPrn?.(this._nordicPrn);
   }
 
   async confirm() {
@@ -322,58 +350,8 @@ export class AppController extends EventTarget {
   // ── Reconnect helper (reuses connect, but UI knows it's a reconnect) ───────
 
   async reconnect(filterConfig) {
+    this._awaitingReconnect = false;
     await this.connect(filterConfig);
-  }
-
-  // ── Auto reconnect (MAC-based, no picker) ───────────────────────────────────
-
-  async _autoReconnect(continuationTimeout) {
-    if (!this._device || !this._provider || this._autoReconnecting) return;
-    this._autoReconnecting = true;
-
-    this._setState(STATES.CONNECTING);
-    this.emit('log', { message: 'Waiting for device to re-advertise…', level: 'info' });
-
-    const onDisconnect = () => this._handleDisconnect('device');
-    try {
-      const connection = await reconnectToDevice(this._device, onDisconnect);
-
-      // Bail out if a manual reconnect already succeeded in the meantime.
-      if (this._connection && this._connection.server?.connected) {
-        this.emit('log', { message: 'Manual reconnect already active — aborting auto-reconnect.', level: 'info' });
-        if (connection.server?.connected) connection.disconnect();
-        return;
-      }
-
-      this._connection = connection;
-      const provider = this._provider;
-
-      await provider.attach(connection);
-
-      this._setState(STATES.CONNECTED);
-      this._continuationActive = true;
-      this.emit('connected', {
-        deviceName: connection.device.name ?? 'Unknown',
-        protocol: provider.constructor.id,
-        capabilities: provider.constructor.capabilities,
-      });
-
-      if (provider.constructor.capabilities.hasSlots) {
-        try {
-          const slots = await provider.readState();
-          this.emit('slots-updated', { slots });
-        } catch (err) {
-          this.emit('log', { message: err.message, level: 'error' });
-        }
-      }
-    } catch (err) {
-      this._continuationActive = false;
-      this._setState(STATES.IDLE);
-      this.emit('log', { message: `Auto-reconnect failed: ${err.message}`, level: 'error' });
-      this.emit('needs-reconnect', {}); // notify UI to show manual Reconnect button
-    } finally {
-      this._autoReconnecting = false;
-    }
   }
 
   // ── Error recovery helpers ────────────────────────────────────────────────

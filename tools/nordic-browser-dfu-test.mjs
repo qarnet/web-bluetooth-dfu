@@ -30,6 +30,7 @@ const BOOTLOADER_NAME = process.env.BOOTLOADER_NAME || 'DfuTest';
 const HEADLESS        = process.env.HEADLESS        === '1';
 const TIMEOUT_MS      = parseInt(process.env.TIMEOUT_MS, 10) || 300_000;
 const CHROME_BIN      = process.env.PUPPETEER_CHROME || undefined;
+const NORDIC_PRN      = parseInt(process.env.NORDIC_PRN || '0', 10) || 0;
 
 const args = process.argv.slice(2);
 const MULTI_IMAGE = args.includes('--multi-image');
@@ -44,21 +45,22 @@ function fail(msg)  { console.error(`\n✗ ${msg}`); }
 
 async function selectDeviceFromPrompt(devicePrompt, preferredNames, fallbackLabel) {
   const names = preferredNames.filter(Boolean);
+  const seen = new Set();
   try {
-    const device = await devicePrompt.waitForDevice(
-      (d) => names.includes(d.name),
-      { timeout: 45_000 },
-    );
-    info(`found device: ${device.name || '(unnamed)'}`);
+    const device = await devicePrompt.waitForDevice((d) => {
+      seen.add(d.name || '(unnamed)');
+      return names.includes(d.name);
+    }, { timeout: 45_000 });
+    info(`found device: ${device.name || '(unnamed)'} (${device.id || 'no-id'})`);
     await devicePrompt.select(device);
     return;
   } catch {
-    info(`no exact name match for [${names.join(', ')}], trying first visible device`);
+    const advertised = [...seen].sort().join(', ') || '(none observed)';
+    throw new Error(
+      `No preferred ${fallbackLabel} found. Expected one of [${names.join(', ')}]. ` +
+      `Observed in picker: ${advertised}`
+    );
   }
-
-  const anyDevice = await devicePrompt.waitForDevice(() => true, { timeout: 20_000 });
-  info(`selected fallback ${fallbackLabel}: ${anyDevice.name || '(unnamed)'}`);
-  await devicePrompt.select(anyDevice);
 }
 
 /** Launch Chrome with the right flags for Web Bluetooth. */
@@ -112,11 +114,9 @@ async function waitForDfuOrReconnect(page, label, timeout = 180_000) {
     () => {
       const btnDfu = document.getElementById('btn-dfu');
       const btnReconnect = document.getElementById('btn-reconnect');
-      const btnRowConnected = document.getElementById('btn-row-connected');
       return (
         (btnDfu && btnDfu.textContent.includes('Done')) ||
-        (btnReconnect && btnReconnect.style.display !== 'none') ||
-        (btnRowConnected && btnRowConnected.style.display !== 'none')
+        (btnReconnect && btnReconnect.style.display !== 'none')
       );
     },
     { label, timeout },
@@ -197,6 +197,10 @@ async function main() {
     step('Loading app in Chrome');
     await page.goto(APP_URL, { waitUntil: 'networkidle0', timeout: 15_000 });
     info('page loaded');
+    if (NORDIC_PRN > 0) {
+      await page.evaluate((prn) => globalThis.dfuController?.setNordicPrn?.(prn), NORDIC_PRN);
+      info(`configured Nordic PRN=${NORDIC_PRN}`);
+    }
 
     await sleep(500);
 
@@ -225,17 +229,25 @@ async function main() {
     const badgeText = await page.evaluate(() => document.getElementById('protocol-badge').textContent);
     info(`protocol detected: ${badgeText}`);
 
-    // ── 2b. Multi-image checkbox ─────────────────────────────────────────────
+    // ── 2b. Multi-image selection ────────────────────────────────────────────
     if (MULTI_IMAGE) {
-      const hasCheckbox = await page.evaluate(() => {
+      const hasSelectors = await page.evaluate(() => {
         const row = document.getElementById('multi-image-row');
-        const cb  = document.getElementById('multi-image-check');
-        return row && row.style.display !== 'none' && cb && !cb.disabled;
+        const base = document.getElementById('nordic-base-check');
+        const app = document.getElementById('nordic-app-check');
+        return row && row.style.display !== 'none' && base && app;
       });
-      if (hasCheckbox) {
+      if (hasSelectors) {
         step('Enabling multi-image update');
-        await page.click('#multi-image-check');
-        info('multi-image checkbox checked');
+        await page.evaluate(() => {
+          const base = document.getElementById('nordic-base-check');
+          const app = document.getElementById('nordic-app-check');
+          if (base && !base.disabled) base.checked = true;
+          if (app && !app.disabled) app.checked = true;
+          base?.dispatchEvent(new Event('change', { bubbles: true }));
+          app?.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+        info('base and application selections enabled');
       } else {
         info('package does not contain multi-image — proceeding as single-image');
       }
@@ -325,21 +337,10 @@ async function main() {
     });
 
     if (!isDone) {
-      // Base image transferred (multi-image) — wait for auto-reconnect to bootloader
-      step('Base image done — waiting for auto-reconnect to continuation bootloader');
-      await waitForPredicate(
-        page,
-        () => {
-          const btnReconnect    = document.getElementById('btn-reconnect');
-          const btnRowConnected = document.getElementById('btn-row-connected');
-          return (
-            btnReconnect    && btnReconnect.style.display    === 'none' &&
-            btnRowConnected && btnRowConnected.style.display !== 'none'
-          );
-        },
-        { label: 'auto-reconnect after base transfer', timeout: 30_000 },
-      );
-      info('auto-reconnect succeeded');
+      // Base image transferred (multi-image) — reconnect to continuation bootloader.
+      step('Base image done — reconnecting to continuation bootloader');
+      await recoverContinuationConnection(page);
+      info('continuation reconnect available');
 
       // Click Update for the application image
       step('Transferring application image');
@@ -358,10 +359,15 @@ async function main() {
         return btn && btn.textContent.includes('Done');
       });
 
-      if (!appDone) {
+      const appNeedsReconnect = await page.evaluate(() => {
+        const btnReconnect = document.getElementById('btn-reconnect');
+        return !!(btnReconnect && btnReconnect.style.display !== 'none');
+      });
+
+      if (!appDone && appNeedsReconnect) {
         // Continuation crash retry: bank_1 is now pre-erased, device re-advertises as DfuTest.
-        // Wait for auto-reconnect then click Update again.
-        step('Continuation crash retry — waiting for auto-reconnect after bank pre-erase');
+        // Reconnect and click Update again.
+        step('Continuation crash retry — reconnecting after bank pre-erase');
         await recoverContinuationConnection(page);
         info('continuation reconnect available (crash retry)');
 
@@ -377,6 +383,8 @@ async function main() {
           () => { const btn = document.getElementById('btn-dfu'); return btn && btn.textContent.includes('Done'); },
           { label: 'app image transfer completion (crash retry)', timeout: 180_000 },
         );
+      } else if (!appDone) {
+        throw new Error('App transfer neither completed nor requested reconnect');
       }
 
       isDone = true;

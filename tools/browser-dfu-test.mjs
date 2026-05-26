@@ -46,21 +46,25 @@ function fail(msg)  { console.error(`\n✗ ${msg}`); }
 
 async function selectDeviceFromPrompt(devicePrompt, preferredNames, fallbackLabel) {
   const exactNames = preferredNames.filter(Boolean);
+  const seen = new Set();
+
   try {
-    const device = await devicePrompt.waitForDevice(
-      (d) => exactNames.includes(d.name),
-      { timeout: 45_000 },
-    );
+    const device = await devicePrompt.waitForDevice((d) => {
+      const label = d.name || '(unnamed)';
+      seen.add(label);
+      return exactNames.includes(d.name);
+    }, { timeout: 45_000 });
+
     info(`found device: ${device.name} (${device.id})`);
     await devicePrompt.select(device);
     return;
   } catch {
-    info(`no exact name match for [${exactNames.join(', ')}], trying first visible device`);
+    const advertised = [...seen].sort().join(', ') || '(none observed)';
+    throw new Error(
+      `No preferred ${fallbackLabel} found. Expected one of [${exactNames.join(', ')}]. ` +
+      `Observed in picker: ${advertised}`
+    );
   }
-
-  const anyDevice = await devicePrompt.waitForDevice(() => true, { timeout: 20_000 });
-  info(`selected fallback ${fallbackLabel}: ${anyDevice.name || '(unnamed)'} (${anyDevice.id})`);
-  await devicePrompt.select(anyDevice);
 }
 
 /** Parse MCUboot version from image header bytes. */

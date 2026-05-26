@@ -109,8 +109,18 @@
 
 
     .multi-image-row {
-      display: flex; align-items: center; gap: 0.5rem;
-      font-size: 0.85rem; color: #94a3b8; margin-top: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.35rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-top: 0.5rem;
+    }
+    .multi-image-option {
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
     }
     .multi-image-row input[type=checkbox] { accent-color: #3b82f6; }
     .multi-image-row.disabled { opacity: 0.5; }
@@ -270,9 +280,13 @@
         <span class="protocol-badge" id="protocol-badge"></span>
       </div>
       <div class="multi-image-row" id="multi-image-row" style="display:none">
-        <label class="multi-image-label">
-          <input type="checkbox" id="multi-image-check" />
-          Multi-image update (SoftDevice + Application)
+        <label class="multi-image-option">
+          <input type="checkbox" id="nordic-base-check" />
+          Upload Base Firmware (SoftDevice + Bootloader)
+        </label>
+        <label class="multi-image-option">
+          <input type="checkbox" id="nordic-app-check" />
+          Upload Application
         </label>
         <span class="multi-image-info" id="multi-image-info"></span>
       </div>

@@ -27,7 +27,8 @@ export class NordicProvider extends DfuProvider {
     this._appImage = null;
     this._baseImage = null;
     this._baseTransferred = false;
-    this._multiImageEnabled = false;
+    this._selection = { base: false, app: true };
+    this._prn = 0;
   }
 
   /** Analyze a ZIP buffer without loading image data. */
@@ -45,7 +46,14 @@ export class NordicProvider extends DfuProvider {
 
   /** Toggle multi-image mode from UI checkbox. */
   setMultiImage(enabled) {
-    this._multiImageEnabled = enabled;
+    this.setImageSelection({ base: !!enabled, app: true });
+  }
+
+  setImageSelection(selection) {
+    this._selection = {
+      base: !!selection?.base,
+      app: !!selection?.app,
+    };
   }
 
   async attach(session) {
@@ -76,9 +84,7 @@ export class NordicProvider extends DfuProvider {
   }
 
   async detach() {
-    // Leave this._dfu intact; SecureDfu.connect() cleans up its own listeners
-    // on the next attach. Nulling it here would break the auto-reconnect path
-    // where the same provider instance is re-attached to the continuation bootloader.
+    this._dfu?.disposeConnection?.();
   }
 
   cancel() {
@@ -87,6 +93,11 @@ export class NordicProvider extends DfuProvider {
 
   setReliableMode(enabled) {
     this._dfu?.setReliableMode(enabled);
+  }
+
+  setPrn(value) {
+    this._prn = Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+    this._dfu?.setPacketReceiptNotifications(this._prn);
   }
 
   async readState() {
@@ -103,6 +114,7 @@ export class NordicProvider extends DfuProvider {
 
     this._baseImage = await pkg.getBaseImage();
     this._appImage  = await pkg.getAppImage();
+    this._baseTransferred = false;
 
     if (!this._baseImage && !this._appImage) {
       throw new Error('No application or base image found in the ZIP package');
@@ -112,41 +124,97 @@ export class NordicProvider extends DfuProvider {
   async runUpdate() {
     if (!this._dfu) throw new Error('DFU engine not ready');
 
-    // Step 1 — Base image (only when multi-image mode enabled)
-    if (this._multiImageEnabled && this._baseImage && !this._baseTransferred) {
+    const wantBase = this._selection.base && !!this._baseImage;
+    const wantApp = this._selection.app && !!this._appImage;
+
+    if (!wantBase && !wantApp) {
+      throw new Error('No Nordic image selected for transfer');
+    }
+
+    // Step 1 — Base image (if selected and not already transferred)
+    if (wantBase && !this._baseTransferred) {
       await this._transferImage(this._baseImage, 'Base firmware (SoftDevice/Bootloader)');
       this._baseTransferred = true;
-      // Device will disconnect and reboot; bootloader stays in DFU mode
-      // with continuation timeout (~10 s).
-      this.emit('needs-reconnect', { continuationTimeout: 10000 });
-      return { needsContinue: true };
+      if (wantApp) {
+        // Device will disconnect and reboot; bootloader stays in DFU mode
+        // with continuation timeout (~10 s).
+        this.emit('needs-reconnect', { continuationTimeout: 10000 });
+        return { needsContinue: true };
+      }
+      this.emit('phase', { phase: 'execute', label: 'DFU complete' });
+      this.emit('log', { message: 'Base firmware transfer complete. Device will reboot automatically.', level: 'ok' });
+      return { needsConfirm: false, complete: true };
     }
+
+    this._dfu.setPacketReceiptNotifications(this._prn);
 
     // Step 2 — Application image
-    if (this._appImage) {
-      await this._transferImage(this._appImage, 'Application');
+    if (wantApp) {
+      if (!this._dfu.isReady()) {
+        this.emit('log', {
+          message: 'DFU transport not ready after reconnect. Requesting reconnect before app transfer…',
+          level: 'warn',
+        });
+        this.emit('needs-reconnect', { continuationTimeout: 10000 });
+        return { needsContinue: true };
+      }
+      if (wantBase && this._baseTransferred) {
+        const readiness = await this._dfu.probeReady();
+        this.emit('log', {
+          message: `Continuation ready: init max=${readiness.maxSize} offset=${readiness.offset} crc=0x${readiness.crc.toString(16)}`,
+          level: 'info',
+        });
+      }
+      try {
+        await this._transferImage(this._appImage, 'Application');
+      } catch (err) {
+        const msg = String(err?.message || err || '');
+        const disconnected =
+          msg.includes('Device disconnected') ||
+          msg.includes('GATT Server is disconnected') ||
+          msg.includes('writeValueWithResponse') ||
+          msg.includes('writeValueWithoutResponse');
+        if (wantBase && this._baseTransferred && disconnected) {
+          this.emit('log', {
+            message: `Continuation link dropped before app transfer completed (${msg}). Reconnect and continue…`,
+            level: 'warn',
+          });
+          this.emit('needs-reconnect', { continuationTimeout: 10000 });
+          return { needsContinue: true };
+        }
+        throw err;
+      }
       this.emit('phase', { phase: 'execute', label: 'DFU complete' });
       this.emit('log', { message: 'DFU complete. Device will reboot automatically.', level: 'ok' });
       return { needsConfirm: false, complete: true };
     }
 
-    // Edge case: only a base image and not in multi-image mode
-    if (this._baseImage) {
-      await this._transferImage(this._baseImage, 'Base firmware');
-      this.emit('phase', { phase: 'execute', label: 'DFU complete' });
-      this.emit('log', { message: 'DFU complete. Device will reboot automatically.', level: 'ok' });
-      return { needsConfirm: false, complete: true };
-    }
-
-    throw new Error('No image selected for transfer');
+    throw new Error('Selected Nordic image is missing in this package');
   }
 
   async _transferImage(image, label) {
+    const initLen = image?.initData?.byteLength ?? image?.initData?.length ?? 0;
+    const fwLen = image?.imageData?.byteLength ?? image?.imageData?.length ?? 0;
+    const initHash = await this._sha256Hex(image?.initData);
+    const fwHash = await this._sha256Hex(image?.imageData);
+    this.emit('log', {
+      message: `[TRACE] ${label}: init_len=${initLen} init_sha256=${initHash} fw_len=${fwLen} fw_sha256=${fwHash}`,
+      level: 'info',
+    });
+
     this.emit('phase', { phase: 'transfer', label: `Transferring init packet (${label})…` });
     await this._dfu.transferInit(image.initData);
 
     this.emit('phase', { phase: 'transfer', label: `Transferring firmware (${label})…` });
     await this._dfu.transferFirmware(image.imageData);
+  }
+
+  async _sha256Hex(data) {
+    if (!data) return 'none';
+    const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+    if (!globalThis.crypto?.subtle) return 'sha256-unavailable';
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
+    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
   }
 
   async confirm() {
