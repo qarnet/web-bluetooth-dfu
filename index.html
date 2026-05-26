@@ -293,12 +293,21 @@
       <div class="firmware-info" id="firmware-info" style="display:none">
         <div class="fw-info-row"><span class="fw-info-label">Planned update:</span> <span class="fw-info-value" id="fw-info-planned"></span></div>
         <div class="fw-info-row"><span class="fw-info-label">Currently running:</span> <span class="fw-info-value" id="fw-info-current"></span></div>
+        <div class="fw-info-row"><span class="fw-info-label">Preflight:</span> <span class="fw-info-value" id="fw-info-preflight"></span></div>
       </div>
       <div class="reliable-mode-row" id="reliable-mode-row" style="display:none">
         <label class="reliable-mode-label" title="Uses write-with-response for every packet. Slower (~2×) but catches silent write failures earlier. Useful on noisy RF links.">
           <input type="checkbox" id="reliable-mode-check" />
           Reliable mode (slower, safer)
         </label>
+      </div>
+      <div class="reliable-mode-row" id="transfer-profile-row" style="display:none">
+        <label class="reliable-mode-label" for="transfer-profile-select">Transfer profile</label>
+        <select id="transfer-profile-select">
+          <option value="balanced" selected>Balanced</option>
+          <option value="conservative">Conservative</option>
+          <option value="aggressive">Aggressive</option>
+        </select>
       </div>
     </section>
 
@@ -310,6 +319,9 @@
       </div>
       <div class="btn-row" id="btn-row-connected" style="display:none">
         <button class="btn-secondary" id="btn-refresh">Refresh slots</button>
+        <button class="btn-secondary" id="btn-smp-diag" style="display:none">SMP Diagnostics</button>
+        <button class="btn-secondary" id="btn-smp-echo" style="display:none">SMP Echo</button>
+        <button class="btn-secondary" id="btn-smp-reset" style="display:none">SMP Reset</button>
         <button class="btn-danger" id="btn-disconnect">Disconnect</button>
       </div>
       <div class="btn-row">

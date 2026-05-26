@@ -16,6 +16,9 @@ const btnConnect      = document.getElementById('btn-connect');
 const btnRowConnect   = document.getElementById('btn-row-connect');
 const btnRowConnected = document.getElementById('btn-row-connected');
 const btnRefresh      = document.getElementById('btn-refresh');
+const btnSmpDiag      = document.getElementById('btn-smp-diag');
+const btnSmpEcho      = document.getElementById('btn-smp-echo');
+const btnSmpReset     = document.getElementById('btn-smp-reset');
 const btnDisconnect   = document.getElementById('btn-disconnect');
 const slotsEl         = document.getElementById('slots');
 const btnDfu          = document.getElementById('btn-dfu');
@@ -41,6 +44,8 @@ const multiImageRow   = document.getElementById('multi-image-row');
 const nordicBaseCheck = document.getElementById('nordic-base-check');
 const nordicAppCheck  = document.getElementById('nordic-app-check');
 const multiImageInfo  = document.getElementById('multi-image-info');
+const transferProfileRow = document.getElementById('transfer-profile-row');
+const transferProfileSelect = document.getElementById('transfer-profile-select');
 
 // Reliable mode UI refs
 const reliableModeRow   = document.getElementById('reliable-mode-row');
@@ -50,6 +55,7 @@ const reliableModeCheck = document.getElementById('reliable-mode-check');
 const firmwareInfo    = document.getElementById('firmware-info');
 const fwInfoPlanned   = document.getElementById('fw-info-planned');
 const fwInfoCurrent   = document.getElementById('fw-info-current');
+const fwInfoPreflight = document.getElementById('fw-info-preflight');
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -60,7 +66,7 @@ const logHistory = [];
 // ── Controller event wiring ──────────────────────────────────────────────────
 
 controller.addEventListener('firmware-loaded', (e) => {
-  const { name, size, protocol, nordicInfo, version } = e.detail;
+  const { name, size, protocol, nordicInfo, version, preflight } = e.detail;
   firmwareProtocol = protocol;
   fileNameEl.textContent = name;
   fileSizeEl.textContent = `${(size / 1024).toFixed(1)} KB`;
@@ -75,6 +81,7 @@ controller.addEventListener('firmware-loaded', (e) => {
     firmwareInfo.style.display = '';
     fwInfoPlanned.textContent = 'Nordic Secure DFU package';
   }
+  fwInfoPreflight.textContent = preflight || 'n/a';
 
   // Nordic image-selection checkboxes
   if (protocol === 'nordic' && nordicInfo) {
@@ -113,6 +120,7 @@ controller.addEventListener('firmware-unloaded', () => {
   firmwareInfo.style.display = 'none';
   fwInfoPlanned.textContent = '';
   fwInfoCurrent.textContent = '';
+  fwInfoPreflight.textContent = '';
   updateDfuButton();
 });
 
@@ -280,6 +288,11 @@ function configureUi(capabilities) {
   } else {
     document.getElementById('sec-slots').style.display = 'none';
   }
+  const isSmp = protocolBadge.dataset.protocol === 'smp';
+  btnSmpDiag.style.display = isSmp ? '' : 'none';
+  btnSmpEcho.style.display = isSmp ? '' : 'none';
+  btnSmpReset.style.display = isSmp ? '' : 'none';
+  transferProfileRow.style.display = '';
   updateConfirmButton(false);
 }
 
@@ -511,6 +524,11 @@ reliableModeCheck.addEventListener('change', () => {
   controller.setReliableMode(reliableModeCheck.checked);
 });
 
+transferProfileSelect.addEventListener('change', () => {
+  controller.setTransferProfile(transferProfileSelect.value);
+  log(`Transfer profile: ${transferProfileSelect.value}`, 'info');
+});
+
 // ── Confirm ─────────────────────────────────────────────────────────────────
 
 btnConfirm.addEventListener('click', async () => {
@@ -539,6 +557,33 @@ btnReconnect.addEventListener('click', async () => {
   } catch (err) {
     log(err.message, 'error');
     btnReconnect.disabled = false;
+  }
+});
+
+btnSmpEcho.addEventListener('click', async () => {
+  try {
+    const rsp = await controller.smpEcho('ping');
+    log(`SMP echo OK: ${rsp?.r || rsp?.d || 'pong'}`, 'ok');
+  } catch (err) {
+    log(err.message, 'error');
+  }
+});
+
+btnSmpDiag.addEventListener('click', async () => {
+  try {
+    await controller.refreshSlots();
+    log('SMP diagnostics refreshed (image slot state).', 'ok');
+  } catch (err) {
+    log(err.message, 'error');
+  }
+});
+
+btnSmpReset.addEventListener('click', async () => {
+  try {
+    await controller.resetDevice();
+    log('Reset command sent', 'warn');
+  } catch (err) {
+    log(err.message, 'error');
   }
 });
 
@@ -592,4 +637,6 @@ btnDownloadLogJson.addEventListener('click', () => {
 // ── Initial state ───────────────────────────────────────────────────────────
 
 btnReconnect.style.display = 'none';
+transferProfileRow.style.display = 'none';
+controller.setTransferProfile(transferProfileSelect.value);
 restoreFilters();
