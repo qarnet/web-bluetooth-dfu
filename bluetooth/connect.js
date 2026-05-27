@@ -1,8 +1,8 @@
 import { ALL_OPTIONAL_SERVICES, LEGACY_DFU_UUID } from '../core/registry.js';
 import { normalizeUuid } from '../core/filter-store.js';
 
-export const SMP_SERVICE_UUID     = '8d53dc1d-1db7-4cd3-868b-8a527460aa84';
-export const SMP_CHAR_UUID        = 'da2e7828-fbce-4e01-ae9e-261174997c48';
+export const SMP_SERVICE_UUID = '8d53dc1d-1db7-4cd3-868b-8a527460aa84';
+export const SMP_CHAR_UUID = 'da2e7828-fbce-4e01-ae9e-261174997c48';
 
 /**
  * Connect to a BLE device using the provided filter configuration.
@@ -15,15 +15,24 @@ export const SMP_CHAR_UUID        = 'da2e7828-fbce-4e01-ae9e-261174997c48';
  */
 export async function connectToDevice(filterConfig, onDisconnect) {
   if (!navigator.bluetooth) {
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const isHTTP = window.location.protocol !== 'https:';
+    const ua = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/.test(ua);
+    const isSecure = window.isSecureContext;
+    const isLinux = ua.includes('Linux');
+
     let msg = 'Web Bluetooth not available';
     if (isIOS) {
-      msg += ' — iOS/iPadOS does not support Web Bluetooth in any browser. Use Android or desktop Chrome.';
-    } else if (isHTTP) {
-      msg += ' — this page is served over HTTP. Web Bluetooth requires HTTPS or localhost. Reload over HTTPS.';
+      msg +=
+        ' — iOS/iPadOS does not support Web Bluetooth in any browser. Use Android or desktop Chrome.';
+    } else if (!isSecure) {
+      msg += ' — this page is not in a secure context. Web Bluetooth requires HTTPS or localhost.';
+    } else if (isLinux) {
+      msg +=
+        ' — this browser does not expose navigator.bluetooth. On Linux, Web Bluetooth works in Google Chrome / Microsoft Edge when enabled.' +
+        ' Verify chrome://flags/#enable-web-bluetooth-new-permissions-backend is Enabled and relaunch.' +
+        ' If it is already enabled, you may be using a Chromium build or policy configuration that disables Web Bluetooth.';
     } else {
-      msg += ' — use Chrome on Android, Windows, macOS, or Linux. Ensure chrome://flags/#enable-web-bluetooth-new-permissions-backend is enabled.';
+      msg += ' — use a recent Chrome/Edge on Android, Windows, macOS, or Linux.';
     }
     throw new Error(msg);
   }
@@ -63,7 +72,9 @@ export async function connectToDevice(filterConfig, onDisconnect) {
   for (const svc of services) {
     if (svc.uuid === LEGACY_DFU_UUID) {
       await server.disconnect();
-      throw new Error('Legacy DFU (0x1530) is not supported — please upgrade to a Secure DFU bootloader.');
+      throw new Error(
+        'Legacy DFU (0x1530) is not supported — please upgrade to a Secure DFU bootloader.'
+      );
     }
   }
 
@@ -106,7 +117,8 @@ export async function reconnectToDevice(device, onDisconnect) {
       server = await device.gatt.connect();
       break;
     } catch (err) {
-      if (attempt === maxRetries) throw new Error(`Reconnect failed after ${maxRetries} attempts: ${err.message}`);
+      if (attempt === maxRetries)
+        throw new Error(`Reconnect failed after ${maxRetries} attempts: ${err.message}`);
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
