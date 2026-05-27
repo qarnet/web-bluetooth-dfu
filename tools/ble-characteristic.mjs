@@ -27,20 +27,27 @@ export class BleCharacteristic {
   }
 
   #dispatch(buffer) {
-    const ab = buffer.buffer.slice(
-      buffer.byteOffset,
-      buffer.byteOffset + buffer.byteLength,
-    );
+    const ab = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength);
     const event = { target: { value: new DataView(ab) } };
     for (const fn of this.#listeners) {
-      try { fn(event); } catch (e) { console.error('[BleCharacteristic] listener error:', e); }
+      try {
+        fn(event);
+      } catch (e) {
+        console.error('[BleCharacteristic] listener error:', e);
+      }
     }
   }
 
-  async startNotifications()  { await this.#char.startNotifications(); return this; }
+  async startNotifications() {
+    await this.#char.startNotifications();
+    return this;
+  }
   async stopNotifications() {
-    try { await this.#char.stopNotifications(); }
-    catch (e) { /* ignore D-Bus "Not connected" on teardown */ }
+    try {
+      await this.#char.stopNotifications();
+    } catch (e) {
+      /* ignore D-Bus "Not connected" on teardown */
+    }
     return this;
   }
 

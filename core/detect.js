@@ -24,10 +24,11 @@ export function detectFromDevice(services) {
     if (uuid === REGISTRY.nordic.serviceUuid) {
       const chars = info.characteristics;
       const hasControl = chars.has(REGISTRY.nordic.controlUuid);
-      const hasPacket  = chars.has(REGISTRY.nordic.packetUuid);
+      const hasPacket = chars.has(REGISTRY.nordic.packetUuid);
       if (hasControl && hasPacket) return 'nordic';
-      const hasButtonless = chars.has(REGISTRY.nordic.buttonlessWithoutBondsUuid)
-                         || chars.has(REGISTRY.nordic.buttonlessWithBondsUuid);
+      const hasButtonless =
+        chars.has(REGISTRY.nordic.buttonlessWithoutBondsUuid) ||
+        chars.has(REGISTRY.nordic.buttonlessWithBondsUuid);
       if (hasButtonless) return 'nordic-buttonless';
       return 'nordic';
     }
@@ -42,13 +43,18 @@ export function detectFromDevice(services) {
  * @returns {string} 'smp' | 'nordic' | null
  */
 export function resolveProtocol(fileSig, deviceSig) {
-  if (deviceSig === 'legacy') throw new Error('Legacy DFU (0x1530) is not supported — please upgrade to a Secure DFU bootloader.');
+  if (deviceSig === 'legacy')
+    throw new Error(
+      'Legacy DFU (0x1530) is not supported — please upgrade to a Secure DFU bootloader.'
+    );
   if (deviceSig === 'nordic-buttonless') return 'nordic';
 
   // Device signal is authoritative
   if (deviceSig) {
     if (fileSig && fileSig !== deviceSig) {
-      throw new Error(`Device expects ${deviceSig.toUpperCase()} but the selected file is ${fileSig.toUpperCase()}`);
+      throw new Error(
+        `Device expects ${deviceSig.toUpperCase()} but the selected file is ${fileSig.toUpperCase()}`
+      );
     }
     return deviceSig;
   }

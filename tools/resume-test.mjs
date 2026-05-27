@@ -17,8 +17,12 @@ EventEmitter.defaultMaxListeners = 0;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function step(msg) { console.log(`\n▶ ${msg}`); }
-function info(msg) { console.log(`  ${msg}`); }
+function step(msg) {
+  console.log(`\n▶ ${msg}`);
+}
+function info(msg) {
+  console.log(`  ${msg}`);
+}
 
 async function findDevice(adapter, name) {
   if (!(await adapter.isDiscovering())) await adapter.startDiscovery();
@@ -27,8 +31,13 @@ async function findDevice(adapter, name) {
     for (const m of await adapter.devices()) {
       const dev = await adapter.getDevice(m);
       let advName = null;
-      try { advName = await dev.getName(); }
-      catch { try { advName = await dev.getAlias(); } catch {} }
+      try {
+        advName = await dev.getName();
+      } catch {
+        try {
+          advName = await dev.getAlias();
+        } catch {}
+      }
       if (advName === name) return dev;
     }
     await sleep(1000);
@@ -38,8 +47,10 @@ async function findDevice(adapter, name) {
 
 async function connectWithRetry(device, attempts = 8) {
   for (let i = 1; i <= attempts; i++) {
-    try { await device.connect(); return; }
-    catch (err) {
+    try {
+      await device.connect();
+      return;
+    } catch (err) {
       if (i === attempts) throw new Error(`connect failed after ${attempts} tries: ${err.message}`);
       await sleep(2000);
     }
@@ -125,7 +136,9 @@ async function main() {
     } catch (err) {
       info(`Expected error on disconnect: ${err.message}`);
     }
-    info(`Upload stopped at offset ${lastOffset} (~${Math.floor((lastOffset/fw.byteLength)*100)}%)`);
+    info(
+      `Upload stopped at offset ${lastOffset} (~${Math.floor((lastOffset / fw.byteLength) * 100)}%)`
+    );
 
     // Do NOT detach or disconnect — destroy the old bluetooth/D-Bus context.
     // The provider keeps _resumeOffset across sessions.
@@ -191,7 +204,9 @@ async function main() {
 
         const totalElapsed = (Date.now() - t0) / 1000;
         console.log(`\n✓ PASS — resume DFU succeeded. Total time: ${totalElapsed.toFixed(1)}s`);
-        console.log(`  First attempt stopped at ~${Math.floor((lastOffset/fw.byteLength)*100)}%, resumed and completed.`);
+        console.log(
+          `  First attempt stopped at ~${Math.floor((lastOffset / fw.byteLength) * 100)}%, resumed and completed.`
+        );
       } finally {
         destroy3();
       }

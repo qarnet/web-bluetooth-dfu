@@ -4,9 +4,18 @@ import { shouldDisableDfuButton } from '../ui/dfu-button-state.js';
 
 describe('DFU button UI state', () => {
   it('disables when busy or firmware/provider missing', () => {
-    assert.strictEqual(shouldDisableDfuButton({ isBusy: true, hasFirmware: true, hasProvider: true }), true);
-    assert.strictEqual(shouldDisableDfuButton({ isBusy: false, hasFirmware: false, hasProvider: true }), true);
-    assert.strictEqual(shouldDisableDfuButton({ isBusy: false, hasFirmware: true, hasProvider: false }), true);
+    assert.strictEqual(
+      shouldDisableDfuButton({ isBusy: true, hasFirmware: true, hasProvider: true }),
+      true
+    );
+    assert.strictEqual(
+      shouldDisableDfuButton({ isBusy: false, hasFirmware: false, hasProvider: true }),
+      true
+    );
+    assert.strictEqual(
+      shouldDisableDfuButton({ isBusy: false, hasFirmware: true, hasProvider: false }),
+      true
+    );
   });
 
   it('disables for Nordic when row visible and both image checks are off', () => {

@@ -19,15 +19,23 @@ async function main() {
       for (const m of await adapter.devices()) {
         try {
           const dev = await adapter.getDevice(m);
-          const name = (await dev.getName().catch(() => '')) || (await dev.getAlias().catch(() => ''));
-          if (name === 'Nordic_Buttonless') { foundDevice = dev; oldMac = m; break; }
+          const name =
+            (await dev.getName().catch(() => '')) || (await dev.getAlias().catch(() => ''));
+          if (name === 'Nordic_Buttonless') {
+            foundDevice = dev;
+            oldMac = m;
+            break;
+          }
         } catch {}
       }
       if (foundDevice) break;
       await sleep(1000);
     }
 
-    if (!foundDevice) { console.log('Not found'); return; }
+    if (!foundDevice) {
+      console.log('Not found');
+      return;
+    }
     console.log(`Found: ${await foundDevice.getName()} @ ${oldMac}`);
     await foundDevice.connect();
     const gatt = await foundDevice.gatt();
@@ -38,7 +46,7 @@ async function main() {
 
     // Show device alias property
     try {
-      console.log(`Device Alias: ${await adapter.getDevice(oldMac).then(d=> d.getAlias())}`);
+      console.log(`Device Alias: ${await adapter.getDevice(oldMac).then((d) => d.getAlias())}`);
     } catch {}
 
     await foundDevice.disconnect();
@@ -51,14 +59,17 @@ async function main() {
       for (const m of await adapter.devices()) {
         try {
           const dev = await adapter.getDevice(m);
-          const name = (await dev.getName().catch(() => '')) || (await dev.getAlias().catch(() => ''));
+          const name =
+            (await dev.getName().catch(() => '')) || (await dev.getAlias().catch(() => ''));
           if (name) console.log(`  [${i}] ${m}: ${name}`);
         } catch {}
       }
       await sleep(1000);
     }
     await adapter.stopDiscovery();
-  } finally { destroy(); }
+  } finally {
+    destroy();
+  }
 }
 
 main().catch(console.error);

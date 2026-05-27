@@ -5,54 +5,54 @@
 
 import { DfuEventTarget } from '../core/events.js';
 
-const CONTROL_UUID = "8ec90001-f315-4f60-9fb8-838830daea50";
-const PACKET_UUID  = "8ec90002-f315-4f60-9fb8-838830daea50";
-const BUTTON_UUID  = "8ec90003-f315-4f60-9fb8-838830daea50";
-const BUTTON_BONDS_UUID = "8ec90004-f315-4f60-9fb8-838830daea50";
+const CONTROL_UUID = '8ec90001-f315-4f60-9fb8-838830daea50';
+const PACKET_UUID = '8ec90002-f315-4f60-9fb8-838830daea50';
+const BUTTON_UUID = '8ec90003-f315-4f60-9fb8-838830daea50';
+const BUTTON_BONDS_UUID = '8ec90004-f315-4f60-9fb8-838830daea50';
 
 const LITTLE_ENDIAN = true;
-const PACKET_SIZE = 20;   // Web Bluetooth cannot query MTU — safe floor
+const PACKET_SIZE = 20; // Web Bluetooth cannot query MTU — safe floor
 
 const OPERATIONS = {
-  BUTTON_COMMAND:         [ 0x01 ],
-  CREATE_COMMAND:         [ 0x01, 0x01 ],
-  CREATE_DATA:            [ 0x01, 0x02 ],
-  RECEIPT_NOTIFICATIONS:  [ 0x02 ],
-  CACULATE_CHECKSUM:      [ 0x03 ],
-  EXECUTE:                [ 0x04 ],
-  SELECT_COMMAND:         [ 0x06, 0x01 ],
-  SELECT_DATA:            [ 0x06, 0x02 ],
-  RESPONSE:               [ 0x60, 0x20 ]
+  BUTTON_COMMAND: [0x01],
+  CREATE_COMMAND: [0x01, 0x01],
+  CREATE_DATA: [0x01, 0x02],
+  RECEIPT_NOTIFICATIONS: [0x02],
+  CACULATE_CHECKSUM: [0x03],
+  EXECUTE: [0x04],
+  SELECT_COMMAND: [0x06, 0x01],
+  SELECT_DATA: [0x06, 0x02],
+  RESPONSE: [0x60, 0x20],
 };
 
 const RESPONSE = {
-  0x00: "Invalid opcode",
-  0x01: "Operation successful",
-  0x02: "Opcode not supported",
-  0x03: "Missing or invalid parameter value",
-  0x04: "Not enough memory for the data object",
-  0x05: "Data object does not match the firmware and hardware requirements",
-  0x07: "Not a valid object type for a Create request",
-  0x08: "The state of the DFU process does not allow this operation",
-  0x0A: "Operation failed",
-  0x0B: "Extended error"
+  0x00: 'Invalid opcode',
+  0x01: 'Operation successful',
+  0x02: 'Opcode not supported',
+  0x03: 'Missing or invalid parameter value',
+  0x04: 'Not enough memory for the data object',
+  0x05: 'Data object does not match the firmware and hardware requirements',
+  0x07: 'Not a valid object type for a Create request',
+  0x08: 'The state of the DFU process does not allow this operation',
+  0x0a: 'Operation failed',
+  0x0b: 'Extended error',
 };
 
 const EXTENDED_ERROR = {
-  0x00: "No extended error code has been set",
-  0x01: "Invalid error code",
-  0x02: "The format of the command was incorrect",
-  0x03: "The command was successfully parsed, but it is not supported",
-  0x04: "The init command is invalid",
-  0x05: "The firmware version is too low",
-  0x06: "The hardware version of the device does not match",
-  0x07: "The array of supported SoftDevices for the update does not contain the FWID",
-  0x08: "The init packet does not contain a signature",
-  0x09: "The hash type that is specified by the init packet is not supported",
-  0x0A: "The hash of the firmware image cannot be calculated",
-  0x0B: "The type of the signature is unknown or not supported",
-  0x0C: "The hash of the received firmware image does not match the hash in the init packet",
-  0x0D: "The available space on the device is insufficient to hold the firmware"
+  0x00: 'No extended error code has been set',
+  0x01: 'Invalid error code',
+  0x02: 'The format of the command was incorrect',
+  0x03: 'The command was successfully parsed, but it is not supported',
+  0x04: 'The init command is invalid',
+  0x05: 'The firmware version is too low',
+  0x06: 'The hardware version of the device does not match',
+  0x07: 'The array of supported SoftDevices for the update does not contain the FWID',
+  0x08: 'The init packet does not contain a signature',
+  0x09: 'The hash type that is specified by the init packet is not supported',
+  0x0a: 'The hash of the firmware image cannot be calculated',
+  0x0b: 'The type of the signature is unknown or not supported',
+  0x0c: 'The hash of the received firmware image does not match the hash in the init packet',
+  0x0d: 'The available space on the device is insufficient to hold the firmware',
 };
 
 const OP_NAMES = new Map([
@@ -88,7 +88,7 @@ function _onNotify(char, handler) {
 }
 
 export class SecureDfu extends DfuEventTarget {
-  static SERVICE_UUID = 0xFE59;
+  static SERVICE_UUID = 0xfe59;
 
   constructor(crc32, delay = 0) {
     super();
@@ -119,7 +119,11 @@ export class SecureDfu extends DfuEventTarget {
   }
 
   progress(bytes, totalBytes, object) {
-    this.emit('progress', { object: object || 'unknown', totalBytes: totalBytes || 0, currentBytes: bytes });
+    this.emit('progress', {
+      object: object || 'unknown',
+      totalBytes: totalBytes || 0,
+      currentBytes: bytes,
+    });
   }
 
   /** Connect to an already-paired device, resolve characteristics, start notifications.
@@ -128,11 +132,19 @@ export class SecureDfu extends DfuEventTarget {
    */
   async connect(device, characteristics = null) {
     // Remove stale listeners from prior connect to prevent late-firing from old device nulling chars
-    if (this._disconnectCleanupFn) { this._disconnectCleanupFn(); this._disconnectCleanupFn = null; }
-    if (this._notifyCleanupFn)     { this._notifyCleanupFn();     this._notifyCleanupFn = null; }
+    if (this._disconnectCleanupFn) {
+      this._disconnectCleanupFn();
+      this._disconnectCleanupFn = null;
+    }
+    if (this._notifyCleanupFn) {
+      this._notifyCleanupFn();
+      this._notifyCleanupFn = null;
+    }
 
     this._disconnectCleanupFn = _onDeviceDisconnect(device, () => {
-      console.log(`[SecureDFU] disconnect event fired t=${Date.now()} pending ops: ${Object.keys(this._notifyFns).join(',') || 'none'}`);
+      console.log(
+        `[SecureDFU] disconnect event fired t=${Date.now()} pending ops: ${Object.keys(this._notifyFns).join(',') || 'none'}`
+      );
       this._disconnectCleanupFn = null;
       const pending = this._notifyFns;
       this._notifyFns = {};
@@ -143,24 +155,24 @@ export class SecureDfu extends DfuEventTarget {
       }
     });
 
-    const ch = characteristics ?? await this._gattConnect(device);
+    const ch = characteristics ?? (await this._gattConnect(device));
     this.log(`found ${ch.length} characteristic(s)`);
 
-    this._packetChar = ch.find(c => c.uuid === PACKET_UUID);
-    if (!this._packetChar) throw new Error("Unable to find packet characteristic");
-    this.log("found packet characteristic");
+    this._packetChar = ch.find((c) => c.uuid === PACKET_UUID);
+    if (!this._packetChar) throw new Error('Unable to find packet characteristic');
+    this.log('found packet characteristic');
 
-    this._controlChar = ch.find(c => c.uuid === CONTROL_UUID);
-    if (!this._controlChar) throw new Error("Unable to find control characteristic");
-    this.log("found control characteristic");
+    this._controlChar = ch.find((c) => c.uuid === CONTROL_UUID);
+    if (!this._controlChar) throw new Error('Unable to find control characteristic');
+    this.log('found control characteristic');
 
     if (!this._controlChar.properties.notify && !this._controlChar.properties.indicate) {
-      throw new Error("Control characteristic does not allow notifications");
+      throw new Error('Control characteristic does not allow notifications');
     }
 
     await this._controlChar.startNotifications();
     this._notifyCleanupFn = _onNotify(this._controlChar, this.handleNotification.bind(this));
-    this.log("enabled control notifications");
+    this.log('enabled control notifications');
 
     // Keep connect path minimal and aligned with reference implementation.
     // PRN is optional and can be enabled explicitly before transfer.
@@ -168,18 +180,22 @@ export class SecureDfu extends DfuEventTarget {
 
   async _gattConnect(device, serviceUUID = SecureDfu.SERVICE_UUID) {
     const srv = device.gatt.connected ? device.gatt : await device.gatt.connect();
-    this.log("connected to gatt server");
-    const service = await srv.getPrimaryService(serviceUUID).catch(() => { throw new Error("Unable to find DFU service"); });
-    this.log("found DFU service");
+    this.log('connected to gatt server');
+    const service = await srv.getPrimaryService(serviceUUID).catch(() => {
+      throw new Error('Unable to find DFU service');
+    });
+    this.log('found DFU service');
     return service.getCharacteristics();
   }
 
   handleNotification(event) {
     const view = new DataView(event.target.value.buffer);
-    const rawBytes = Array.from(new Uint8Array(view.buffer)).map(b => '0x' + b.toString(16).padStart(2,'0')).join(' ');
+    const rawBytes = Array.from(new Uint8Array(view.buffer))
+      .map((b) => '0x' + b.toString(16).padStart(2, '0'))
+      .join(' ');
     console.log(`[SecureDFU] notification: ${rawBytes}`);
     if (OPERATIONS.RESPONSE.indexOf(view.getUint8(0)) < 0) {
-      throw new Error("Unrecognised control characteristic response notification");
+      throw new Error('Unrecognised control characteristic response notification');
     }
 
     const operation = view.getUint8(1);
@@ -190,10 +206,12 @@ export class SecureDfu extends DfuEventTarget {
 
     if (result === 0x01) {
       const data = new DataView(view.buffer, 3);
-      console.log(`[SecureDFU] notify ok op=${opName(operation)}(0x${operation.toString(16)}) payload_len=${data.byteLength}`);
+      console.log(
+        `[SecureDFU] notify ok op=${opName(operation)}(0x${operation.toString(16)}) payload_len=${data.byteLength}`
+      );
       this._resolveNotify(operation, data);
       return;
-    } else if (result === 0x0B) {
+    } else if (result === 0x0b) {
       const code = view.getUint8(3);
       error = `Error: ${EXTENDED_ERROR[code] || 'Unknown extended error'}`;
     } else {
@@ -202,7 +220,9 @@ export class SecureDfu extends DfuEventTarget {
 
     if (error) {
       this.log(`notify: ${error}`);
-      console.error(`[SecureDFU] notify error op=${opName(operation)}(0x${operation.toString(16)}): ${error}`);
+      console.error(
+        `[SecureDFU] notify error op=${opName(operation)}(0x${operation.toString(16)}): ${error}`
+      );
       if (this._notifyFns[operation]) {
         this._rejectNotify(operation, error);
       }
@@ -211,11 +231,17 @@ export class SecureDfu extends DfuEventTarget {
 
   _resolveNotify(op, data) {
     const fn = this._notifyFns[op];
-    if (fn) { fn.resolve(data); delete this._notifyFns[op]; }
+    if (fn) {
+      fn.resolve(data);
+      delete this._notifyFns[op];
+    }
   }
   _rejectNotify(op, err) {
     const fn = this._notifyFns[op];
-    if (fn) { fn.reject(err); delete this._notifyFns[op]; }
+    if (fn) {
+      fn.reject(err);
+      delete this._notifyFns[op];
+    }
   }
 
   async sendOperation(characteristic, operation, buffer) {
@@ -232,8 +258,12 @@ export class SecureDfu extends DfuEventTarget {
 
     this._notifyFns[operation[0]] = { resolve: null, reject: null, value };
 
-    const txHex = Array.from(value).map((b) => b.toString(16).padStart(2, '0')).join(' ');
-    console.log(`[SecureDFU] tx t=${Date.now()} op=${opName(operation[0])}(0x${operation[0].toString(16)}) bytes=[${txHex}]`);
+    const txHex = Array.from(value)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join(' ');
+    console.log(
+      `[SecureDFU] tx t=${Date.now()} op=${opName(operation[0])}(0x${operation[0].toString(16)}) bytes=[${txHex}]`
+    );
 
     const write = async () => {
       const writeMethod = characteristic.writeValueWithResponse.bind(characteristic);
@@ -242,10 +272,12 @@ export class SecureDfu extends DfuEventTarget {
 
     return new Promise((resolve, reject) => {
       this._notifyFns[operation[0]].resolve = resolve;
-      this._notifyFns[operation[0]].reject  = reject;
+      this._notifyFns[operation[0]].reject = reject;
       write().catch((err) => {
         delete this._notifyFns[operation[0]];
-        console.error(`[SecureDFU] tx failed op=${opName(operation[0])}(0x${operation[0].toString(16)}): ${err?.message || err}`);
+        console.error(
+          `[SecureDFU] tx failed op=${opName(operation[0])}(0x${operation[0].toString(16)}): ${err?.message || err}`
+        );
         reject(err);
       });
     });
@@ -254,8 +286,8 @@ export class SecureDfu extends DfuEventTarget {
   sendControl(operation, buffer) {
     return new Promise((resolve, reject) => {
       this.sendOperation(this._controlChar, operation, buffer)
-        .then(resp => setTimeout(() => resolve(resp), this._delay))
-        .catch(err => reject(err));
+        .then((resp) => setTimeout(() => resolve(resp), this._delay))
+        .catch((err) => reject(err));
     });
   }
 
@@ -289,12 +321,14 @@ export class SecureDfu extends DfuEventTarget {
         }
       })
       .then(() => this.sendControl(selectType))
-      .then(response => {
+      .then((response) => {
         // Nordic SELECT response layout: max_size(4) | offset(4) | crc(4)
         const maxSize = response.getUint32(0, LITTLE_ENDIAN);
-        const offset  = response.getUint32(4, LITTLE_ENDIAN);
-        const crc     = response.getUint32(8, LITTLE_ENDIAN);
-        console.log(`[SecureDFU] select ${type}: max=${maxSize} offset=${offset} crc=0x${crc.toString(16)}`);
+        const offset = response.getUint32(4, LITTLE_ENDIAN);
+        const crc = response.getUint32(8, LITTLE_ENDIAN);
+        console.log(
+          `[SecureDFU] select ${type}: max=${maxSize} offset=${offset} crc=0x${crc.toString(16)}`
+        );
 
         if (type === 'init' && offset === buffer.byteLength && this.checkCrc(buffer, crc)) {
           this.log('init packet already available, skipping transfer');
@@ -303,7 +337,7 @@ export class SecureDfu extends DfuEventTarget {
 
         // If init packet appears complete but CRC mismatches (stale data from
         // a previous DFU), restart from offset 0 to force a full overwrite.
-        const effectiveOffset = (type === 'init' && offset >= buffer.byteLength) ? 0 : offset;
+        const effectiveOffset = type === 'init' && offset >= buffer.byteLength ? 0 : offset;
 
         this.progress(0, buffer.byteLength, type);
         return this.transferObject(buffer, createType, maxSize, effectiveOffset);
@@ -316,16 +350,18 @@ export class SecureDfu extends DfuEventTarget {
       throw new Error(`Object validation failed ${MAX_CRC_FAIL_STREAK} times at offset ${offset}`);
     }
 
-    const start = offset - offset % maxSize;
+    const start = offset - (offset % maxSize);
     const end = Math.min(start + maxSize, buffer.byteLength);
-    console.log(`[SecureDFU] transferObject type=${createType[1]} start=${start} end=${end} total=${buffer.byteLength} streak=${crcFailStreak}`);
+    console.log(
+      `[SecureDFU] transferObject type=${createType[1]} start=${start} end=${end} total=${buffer.byteLength} streak=${crcFailStreak}`
+    );
     const view = new DataView(new ArrayBuffer(4));
     view.setUint32(0, end - start, LITTLE_ENDIAN);
 
     return this.sendControl(createType, view.buffer)
       .then(() => this.transferData(buffer.slice(start, end), buffer.byteLength, 0, start))
       .then(() => this.sendControl(OPERATIONS.CACULATE_CHECKSUM))
-      .then(response => {
+      .then((response) => {
         const crc = response.getUint32(4, LITTLE_ENDIAN);
         const transferred = response.getUint32(0, LITTLE_ENDIAN);
         const data = buffer.slice(0, transferred);
@@ -333,10 +369,20 @@ export class SecureDfu extends DfuEventTarget {
         if (this.checkCrc(data, crc)) {
           this.log(`written ${transferred} bytes`);
           const execT0 = Date.now();
-          console.log(`[SecureDFU] CRC OK, sending EXECUTE t=${execT0} (transferred=${transferred}, type=${createType[1]})`);
+          console.log(
+            `[SecureDFU] CRC OK, sending EXECUTE t=${execT0} (transferred=${transferred}, type=${createType[1]})`
+          );
           return this.sendControl(OPERATIONS.EXECUTE)
-            .then(() => { console.log(`[SecureDFU] EXECUTE succeeded dt=${Date.now()-execT0}ms (transferred=${transferred})`); return { transferred, ok: true }; })
-            .catch(err => { console.error(`[SecureDFU] EXECUTE failed dt=${Date.now()-execT0}ms: ${err}`); throw err; });
+            .then(() => {
+              console.log(
+                `[SecureDFU] EXECUTE succeeded dt=${Date.now() - execT0}ms (transferred=${transferred})`
+              );
+              return { transferred, ok: true };
+            })
+            .catch((err) => {
+              console.error(`[SecureDFU] EXECUTE failed dt=${Date.now() - execT0}ms: ${err}`);
+              throw err;
+            });
         } else {
           this.log('object failed to validate');
           // Slow down slightly after CRC failures; fast command writes can
@@ -420,7 +466,7 @@ export class SecureDfu extends DfuEventTarget {
   }
 
   delayPromise(delay) {
-    return new Promise(resolve => setTimeout(resolve, delay));
+    return new Promise((resolve) => setTimeout(resolve, delay));
   }
 
   /** Update a connected device. Device should already be in bootloader mode. */
@@ -469,14 +515,16 @@ export class SecureDfu extends DfuEventTarget {
    */
   async triggerButtonless(device, withBonds = false, characteristics = null) {
     const buttonUuid = withBonds ? BUTTON_BONDS_UUID : BUTTON_UUID;
-    const ch = characteristics ?? await this._gattConnect(device, SecureDfu.SERVICE_UUID);
-    const buttonChar = ch.find(c => c.uuid === buttonUuid);
+    const ch = characteristics ?? (await this._gattConnect(device, SecureDfu.SERVICE_UUID));
+    const buttonChar = ch.find((c) => c.uuid === buttonUuid);
     if (!buttonChar) {
       // If control+packet are already present, we're already in bootloader mode.
-      const hasControl = ch.find(c => c.uuid === CONTROL_UUID);
-      const hasPacket  = ch.find(c => c.uuid === PACKET_UUID);
+      const hasControl = ch.find((c) => c.uuid === CONTROL_UUID);
+      const hasPacket = ch.find((c) => c.uuid === PACKET_UUID);
       if (hasControl && hasPacket) return false;
-      throw new Error('Unsupported device — neither DFU control nor buttonless characteristic found');
+      throw new Error(
+        'Unsupported device — neither DFU control nor buttonless characteristic found'
+      );
     }
 
     if (!buttonChar.properties.notify && !buttonChar.properties.indicate) {
@@ -492,13 +540,16 @@ export class SecureDfu extends DfuEventTarget {
       const cleanupNotify = _onNotify(buttonChar, (ev) => this.handleNotification(ev));
 
       const sendBuf = new Uint8Array(OPERATIONS.BUTTON_COMMAND);
-      buttonChar.writeValueWithResponse(sendBuf).then(() => {
-        this.log('sent DFU mode command');
-      }).catch(err => {
-        cleanupDisconnect();
-        cleanupNotify();
-        reject(err);
-      });
+      buttonChar
+        .writeValueWithResponse(sendBuf)
+        .then(() => {
+          this.log('sent DFU mode command');
+        })
+        .catch((err) => {
+          cleanupDisconnect();
+          cleanupNotify();
+          reject(err);
+        });
     }).then(() => {
       // Device disconnected; return true to indicate reconnect needed
       return true;

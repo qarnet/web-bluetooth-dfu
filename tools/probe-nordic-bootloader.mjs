@@ -11,23 +11,33 @@ async function main() {
   const { bluetooth, destroy } = createBluetooth();
   try {
     const adapter = await bluetooth.defaultAdapter();
-    if (!await adapter.isPowered()) { console.log('BT not powered'); return; }
+    if (!(await adapter.isPowered())) {
+      console.log('BT not powered');
+      return;
+    }
     await adapter.startDiscovery();
     let dev;
     for (let i = 0; i < 15; i++) {
       for (const m of await adapter.devices()) {
         dev = await adapter.getDevice(m);
         let n = '';
-        try { n = await dev.getName(); } catch {}
-        try { if (!n) n = await dev.getAlias(); } catch {}
+        try {
+          n = await dev.getName();
+        } catch {}
+        try {
+          if (!n) n = await dev.getAlias();
+        } catch {}
         if (n === 'Nordic_Buttonless') break;
         dev = null;
       }
       if (dev) break;
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
     }
     await adapter.stopDiscovery();
-    if (!dev) { console.log('Device not found'); return; }
+    if (!dev) {
+      console.log('Device not found');
+      return;
+    }
     console.log(`Found ${await dev.getName()} @ ${await dev.getAddress()}`);
 
     console.log('Connecting...');
@@ -36,13 +46,15 @@ async function main() {
     console.log('Connected, enumerating services...');
 
     const svcUuids = await gatt.services();
-    console.log(`Found ${svcUuids.length} services: ${svcUuids.map(u=>u.toUpperCase()).join(', ')}`);
+    console.log(
+      `Found ${svcUuids.length} services: ${svcUuids.map((u) => u.toUpperCase()).join(', ')}`
+    );
 
-  let nordicSvc = null;
-  for (const su of svcUuids) {
-    const normalized = su.replace(/-/g, '').toLowerCase();
-    if (normalized === NORDIC_SERVICE_UUID.replace(/-/g, '').toLowerCase()) nordicSvc = su;
-  }
+    let nordicSvc = null;
+    for (const su of svcUuids) {
+      const normalized = su.replace(/-/g, '').toLowerCase();
+      if (normalized === NORDIC_SERVICE_UUID.replace(/-/g, '').toLowerCase()) nordicSvc = su;
+    }
     if (!nordicSvc) {
       console.log(`Nordic DFU service (${NORDIC_SERVICE_UUID.toUpperCase()}) NOT FOUND`);
       return;
@@ -50,10 +62,12 @@ async function main() {
 
     const svc = await gatt.getPrimaryService(NORDIC_SERVICE_UUID);
     const charUuids = await svc.characteristics();
-    console.log(`Nordic DFU service found! Characteristics: ${charUuids.map(u=>u.toUpperCase()).join(', ')}`);
+    console.log(
+      `Nordic DFU service found! Characteristics: ${charUuids.map((u) => u.toUpperCase()).join(', ')}`
+    );
 
-    const controlUuid = charUuids.find(u => u.toLowerCase().includes('8ec90001'));
-    const packetUuid  = charUuids.find(u => u.toLowerCase().includes('8ec90002'));
+    const controlUuid = charUuids.find((u) => u.toLowerCase().includes('8ec90001'));
+    const packetUuid = charUuids.find((u) => u.toLowerCase().includes('8ec90002'));
 
     if (!controlUuid || !packetUuid) {
       console.log(`Missing control (${controlUuid}) or packet (${packetUuid}) char`);
@@ -62,7 +76,7 @@ async function main() {
 
     const controlChar = await svc.getCharacteristic(controlUuid);
     console.log(`Control char: ${controlUuid.toUpperCase()} flags=${await controlChar.getFlags()}`);
-    const packetChar  = await svc.getCharacteristic(packetUuid);
+    const packetChar = await svc.getCharacteristic(packetUuid);
     console.log(`Packet char:  ${packetUuid.toUpperCase()} flags=${await packetChar.getFlags()}`);
 
     // Now, let's try writing to the control point and reading notifications
@@ -74,10 +88,9 @@ async function main() {
     } catch (e) {
       console.log('Write failed:', e.message);
     }
-
   } finally {
     destroy();
   }
 }
 
-main().catch(e => console.error(e));
+main().catch((e) => console.error(e));

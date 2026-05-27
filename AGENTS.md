@@ -14,24 +14,24 @@ Vanilla HTML + ES modules, no build step, no runtime npm dependencies.
 
 ## Project layout
 
-| File | Responsibility |
-|---|---|
-| `index.html` | DOM, inline CSS, no framework |
-| `app.js` | UI orchestration and DFU state machine |
-| `bluetooth/connect.js` | Web Bluetooth device picker, GATT connect/disconnect, service enumeration |
-| `core/events.js` | EventTarget base for providers |
-| `core/provider.js` | `DfuProvider` base class + capability flags |
-| `core/registry.js` | Static table of known providers (UUIDs, file matchers) |
-| `core/detect.js` | Device + file detection, conflict resolution |
-| `smp/cbor.js` | Minimal CBOR encoder/decoder |
-| `smp/mcumgr.js` | SMP protocol engine (transport-decoupled, write queue) |
-| `smp/smp-provider.js` | DfuProvider adapter for SMP/MCUboot |
-| `nordic/secure-dfu.js` | Nordic Secure DFU transfer engine with cross-platform event polyfills |
-| `nordic/package.js` | `.zip` parser for Nordic DFU packages |
-| `nordic/nordic-provider.js` | DfuProvider adapter for Nordic Secure DFU |
-| `vendor/cbor-x.js` | Vendored CBOR library |
-| `vendor/jszip.mjs` | Vendored JSZip ESM bundle |
-| `vendor/crc32.js` | Vendored CRC-32 implementation matching Nordic firmware algorithm |
+| File                        | Responsibility                                                            |
+| --------------------------- | ------------------------------------------------------------------------- |
+| `index.html`                | DOM, inline CSS, no framework                                             |
+| `app.js`                    | UI orchestration and DFU state machine                                    |
+| `bluetooth/connect.js`      | Web Bluetooth device picker, GATT connect/disconnect, service enumeration |
+| `core/events.js`            | EventTarget base for providers                                            |
+| `core/provider.js`          | `DfuProvider` base class + capability flags                               |
+| `core/registry.js`          | Static table of known providers (UUIDs, file matchers)                    |
+| `core/detect.js`            | Device + file detection, conflict resolution                              |
+| `smp/cbor.js`               | Minimal CBOR encoder/decoder                                              |
+| `smp/mcumgr.js`             | SMP protocol engine (transport-decoupled, write queue)                    |
+| `smp/smp-provider.js`       | DfuProvider adapter for SMP/MCUboot                                       |
+| `nordic/secure-dfu.js`      | Nordic Secure DFU transfer engine with cross-platform event polyfills     |
+| `nordic/package.js`         | `.zip` parser for Nordic DFU packages                                     |
+| `nordic/nordic-provider.js` | DfuProvider adapter for Nordic Secure DFU                                 |
+| `vendor/cbor-x.js`          | Vendored CBOR library                                                     |
+| `vendor/jszip.mjs`          | Vendored JSZip ESM bundle                                                 |
+| `vendor/crc32.js`           | Vendored CRC-32 implementation matching Nordic firmware algorithm         |
 
 ## SMP protocol quirks
 
@@ -63,16 +63,16 @@ The correct, safe sequence with MCUboot rollback protection is:
 
 ### Slot semantics after each step
 
-| Step | Slot 0 | Slot 1 |
-|---|---|---|
-| Initial (fresh) | `active + confirmed` | empty |
-| After upload + test | `active + confirmed` | `pending` (trailer flag on secondary slot) |
-| After reset (swap done) | `active` only — new image, neither pending nor confirmed | old image |
-| After confirm | `active + confirmed` (new image) | old image |
+| Step                    | Slot 0                                                   | Slot 1                                     |
+| ----------------------- | -------------------------------------------------------- | ------------------------------------------ |
+| Initial (fresh)         | `active + confirmed`                                     | empty                                      |
+| After upload + test     | `active + confirmed`                                     | `pending` (trailer flag on secondary slot) |
+| After reset (swap done) | `active` only — new image, neither pending nor confirmed | old image                                  |
+| After confirm           | `active + confirmed` (new image)                         | old image                                  |
 
 **Critical:** if the user disconnects after step 3 (reset) but before step 5 (confirm), the next reboot will revert to the old image. The UI must surface this as "active but unconfirmed — will revert on reboot" (see `checkPending()` in `app.js`).
 
-The MCUboot `pending` trailer flag lives on the *secondary* slot before the swap (meaning "swap me next boot") and is cleared once the swap completes. After the swap, the new primary is `active` but neither `pending` nor `confirmed` — `checkPending()` keys on `active && !confirmed`, not on the `pending` bit, to drive the Confirm Update button.
+The MCUboot `pending` trailer flag lives on the _secondary_ slot before the swap (meaning "swap me next boot") and is cleared once the swap completes. After the swap, the new primary is `active` but neither `pending` nor `confirmed` — `checkPending()` keys on `active && !confirmed`, not on the `pending` bit, to drive the Confirm Update button.
 
 ## Testing
 
@@ -106,10 +106,10 @@ Reference bootloader hex and `.zip` packages from nRF5 SDK 17.1.0 are stored und
 
 This machine has two USB devices that tests depend on:
 
-| Device | Expected `lsusb` ID | Role |
-|---|---|---|
-| nRF52840 DK (via J-Link) | `1366:1051` SEGGER J-Link | Target firmware device |
-| ASUS BT400 BLE dongle | `0b05:17cb` ASUSTek Broadcom BCM20702A0 | BLE adapter for `bluetoothctl` / `node-ble` |
+| Device                   | Expected `lsusb` ID                     | Role                                        |
+| ------------------------ | --------------------------------------- | ------------------------------------------- |
+| nRF52840 DK (via J-Link) | `1366:1051` SEGGER J-Link               | Target firmware device                      |
+| ASUS BT400 BLE dongle    | `0b05:17cb` ASUSTek Broadcom BCM20702A0 | BLE adapter for `bluetoothctl` / `node-ble` |
 
 Before running any BLE test (`make test`, `node tools/nordic-dfu-test.mjs`, etc.), verify both are present:
 
@@ -131,6 +131,7 @@ This environment runs headless; `sudo` is unavailable. If `hciconfig` / `bluetoo
 ## External rules
 
 Per-repo NCS/Zephyr lookup conventions and Web Bluetooth + SMP protocol rules are stored in global opencode rule files referenced by `opencode.json`:
+
 - `~/.config/opencode/rules/ncs-nrfutil.md`
 - `~/.config/opencode/rules/web-bluetooth-smp.md`
 

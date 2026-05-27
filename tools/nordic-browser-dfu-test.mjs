@@ -24,13 +24,13 @@ import { resolve } from 'node:path';
 import { readFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 
-const APP_URL         = process.env.APP_URL         || 'https://localhost:8443';
-const DEVICE_NAME     = process.env.DEVICE_NAME     || 'Nordic_Buttonless';
+const APP_URL = process.env.APP_URL || 'https://localhost:8443';
+const DEVICE_NAME = process.env.DEVICE_NAME || 'Nordic_Buttonless';
 const BOOTLOADER_NAME = process.env.BOOTLOADER_NAME || 'DfuTest';
-const HEADLESS        = process.env.HEADLESS        === '1';
-const TIMEOUT_MS      = parseInt(process.env.TIMEOUT_MS, 10) || 300_000;
-const CHROME_BIN      = process.env.PUPPETEER_CHROME || undefined;
-const NORDIC_PRN      = parseInt(process.env.NORDIC_PRN || '0', 10) || 0;
+const HEADLESS = process.env.HEADLESS === '1';
+const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MS, 10) || 300_000;
+const CHROME_BIN = process.env.PUPPETEER_CHROME || undefined;
+const NORDIC_PRN = parseInt(process.env.NORDIC_PRN || '0', 10) || 0;
 
 const args = process.argv.slice(2);
 const MULTI_IMAGE = args.includes('--multi-image');
@@ -38,19 +38,30 @@ const zipArg = args.find((a) => !a.startsWith('--'));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function step(msg)  { console.log(`\n▶ ${msg}`); }
-function info(msg)  { console.log(`  ${msg}`); }
-function pass(msg)  { console.log(`\n✓ ${msg}`); }
-function fail(msg)  { console.error(`\n✗ ${msg}`); }
+function step(msg) {
+  console.log(`\n▶ ${msg}`);
+}
+function info(msg) {
+  console.log(`  ${msg}`);
+}
+function pass(msg) {
+  console.log(`\n✓ ${msg}`);
+}
+function fail(msg) {
+  console.error(`\n✗ ${msg}`);
+}
 
 async function selectDeviceFromPrompt(devicePrompt, preferredNames, fallbackLabel) {
   const names = preferredNames.filter(Boolean);
   const seen = new Set();
   try {
-    const device = await devicePrompt.waitForDevice((d) => {
-      seen.add(d.name || '(unnamed)');
-      return names.includes(d.name);
-    }, { timeout: 45_000 });
+    const device = await devicePrompt.waitForDevice(
+      (d) => {
+        seen.add(d.name || '(unnamed)');
+        return names.includes(d.name);
+      },
+      { timeout: 45_000 }
+    );
     info(`found device: ${device.name || '(unnamed)'} (${device.id || 'no-id'})`);
     await devicePrompt.select(device);
     return;
@@ -58,7 +69,7 @@ async function selectDeviceFromPrompt(devicePrompt, preferredNames, fallbackLabe
     const advertised = [...seen].sort().join(', ') || '(none observed)';
     throw new Error(
       `No preferred ${fallbackLabel} found. Expected one of [${names.join(', ')}]. ` +
-      `Observed in picker: ${advertised}`
+        `Observed in picker: ${advertised}`
     );
   }
 }
@@ -87,7 +98,7 @@ async function launchBrowser() {
 /** Wait until an element matches a predicate evaluated in the page. */
 async function waitForPredicate(page, fn, opts = {}) {
   const timeout = opts.timeout || 30_000;
-  const label   = opts.label || 'predicate';
+  const label = opts.label || 'predicate';
   try {
     return await page.waitForFunction(fn, { timeout, polling: opts.polling || 'raf' });
   } catch (err) {
@@ -101,8 +112,10 @@ async function isAutoReconnected(page) {
     const btnReconnect = document.getElementById('btn-reconnect');
     const btnRowConnected = document.getElementById('btn-row-connected');
     return (
-      btnReconnect && btnReconnect.style.display === 'none' &&
-      btnRowConnected && btnRowConnected.style.display !== 'none'
+      btnReconnect &&
+      btnReconnect.style.display === 'none' &&
+      btnRowConnected &&
+      btnRowConnected.style.display !== 'none'
     );
   });
 }
@@ -119,7 +132,7 @@ async function waitForDfuOrReconnect(page, label, timeout = 180_000) {
         (btnReconnect && btnReconnect.style.display !== 'none')
       );
     },
-    { label, timeout },
+    { label, timeout }
   );
 }
 
@@ -134,7 +147,7 @@ async function recoverContinuationConnection(page) {
         (btnRowConnected && btnRowConnected.style.display !== 'none')
       );
     },
-    { label: 'connected or reconnect state', timeout: 45_000 },
+    { label: 'connected or reconnect state', timeout: 45_000 }
   );
 
   const needsReconnect = await page.evaluate(() => {
@@ -149,12 +162,16 @@ async function recoverContinuationConnection(page) {
     page.waitForDevicePrompt({ timeout: 30_000 }),
     page.click('#btn-reconnect'),
   ]);
-  await selectDeviceFromPrompt(prompt, [BOOTLOADER_NAME, 'DfuTest', 'DfuTarg'], 'continuation reconnect');
+  await selectDeviceFromPrompt(
+    prompt,
+    [BOOTLOADER_NAME, 'DfuTest', 'DfuTarg'],
+    'continuation reconnect'
+  );
 
   await waitForPredicate(
     page,
     () => document.getElementById('btn-row-connected').style.display !== 'none',
-    { label: 'connected after manual continuation reconnect', timeout: 30_000 },
+    { label: 'connected after manual continuation reconnect', timeout: 30_000 }
   );
 }
 
@@ -175,19 +192,27 @@ async function main() {
 
   const browser = await launchBrowser();
   const context = await browser.createBrowserContext();
-  const page    = await context.newPage();
+  const page = await context.newPage();
 
   // Capture all browser console output — critical for diagnosing DFU error notifications
   page.on('console', (msg) => {
     const text = msg.text();
     // Log everything from SecureDFU, plus errors/warnings from anywhere
-    if (msg.type() === 'error' || msg.type() === 'warning' ||
-        text.includes('SecureDFU') || text.includes('notify') ||
-        text.includes('disconnect') || text.includes('written') ||
-        text.includes('Error') || text.includes('execute') ||
-        text.includes('0x60') || text.includes('init packet') ||
-        text.includes('EXECUTE') || text.includes('opcode')) {
-      info(`[${new Date().toISOString().slice(11,23)}][BROWSER:${msg.type()}] ${text}`);
+    if (
+      msg.type() === 'error' ||
+      msg.type() === 'warning' ||
+      text.includes('SecureDFU') ||
+      text.includes('notify') ||
+      text.includes('disconnect') ||
+      text.includes('written') ||
+      text.includes('Error') ||
+      text.includes('execute') ||
+      text.includes('0x60') ||
+      text.includes('init packet') ||
+      text.includes('EXECUTE') ||
+      text.includes('opcode')
+    ) {
+      info(`[${new Date().toISOString().slice(11, 23)}][BROWSER:${msg.type()}] ${text}`);
     }
   });
   page.on('pageerror', (err) => info(`[BROWSER:pageerror] ${err.message}`));
@@ -209,7 +234,9 @@ async function main() {
       return !!b && getComputedStyle(b).display !== 'none';
     });
     if (bannerVisible) {
-      const msg = await page.evaluate(() => document.getElementById('compat-msg')?.textContent || '');
+      const msg = await page.evaluate(
+        () => document.getElementById('compat-msg')?.textContent || ''
+      );
       throw new Error(`Web Bluetooth unavailable: ${msg}`);
     }
 
@@ -224,9 +251,11 @@ async function main() {
         const badge = document.getElementById('protocol-badge');
         return badge && badge.style.display !== 'none' && badge.textContent.length > 0;
       },
-      { label: 'protocol badge after upload' },
+      { label: 'protocol badge after upload' }
     );
-    const badgeText = await page.evaluate(() => document.getElementById('protocol-badge').textContent);
+    const badgeText = await page.evaluate(
+      () => document.getElementById('protocol-badge').textContent
+    );
     info(`protocol detected: ${badgeText}`);
 
     // ── 2b. Multi-image selection ────────────────────────────────────────────
@@ -264,15 +293,15 @@ async function main() {
     await selectDeviceFromPrompt(
       devicePrompt,
       [DEVICE_NAME, 'Nordic_Buttonless', 'Nordic_HRM'],
-      'app-mode target',
+      'app-mode target'
     );
 
     // Device may go directly to connected (already in bootloader) or trigger
     // buttonless DFU and show the Reconnect button instead.
     await waitForDfuOrReconnect(page, 'post-select state (connected or reconnect prompt)', 60_000);
 
-    const directlyConnected = await page.evaluate(() =>
-      document.getElementById('btn-row-connected')?.style.display !== 'none',
+    const directlyConnected = await page.evaluate(
+      () => document.getElementById('btn-row-connected')?.style.display !== 'none'
     );
 
     if (directlyConnected) {
@@ -291,13 +320,13 @@ async function main() {
       await selectDeviceFromPrompt(
         devicePrompt1b,
         [BOOTLOADER_NAME, 'DfuTest', 'DfuTarg'],
-        'bootloader target',
+        'bootloader target'
       );
 
       await waitForPredicate(
         page,
         () => document.getElementById('btn-row-connected').style.display !== 'none',
-        { label: 'reconnected to bootloader', timeout: 30_000 },
+        { label: 'reconnected to bootloader', timeout: 30_000 }
       );
       info('connected to bootloader');
     }
@@ -313,7 +342,7 @@ async function main() {
         const btn = document.getElementById('btn-dfu');
         return btn && !btn.disabled;
       },
-      { label: 'Update Firmware button enabled' },
+      { label: 'Update Firmware button enabled' }
     );
     await page.click('#btn-dfu');
 
@@ -321,14 +350,14 @@ async function main() {
     await waitForPredicate(
       page,
       () => {
-        const btnDfu      = document.getElementById('btn-dfu');
+        const btnDfu = document.getElementById('btn-dfu');
         const btnReconnect = document.getElementById('btn-reconnect');
         return (
           (btnDfu && btnDfu.textContent.includes('Done')) ||
           (btnReconnect && btnReconnect.style.display !== 'none')
         );
       },
-      { label: 'transfer done or needs-reconnect', timeout: 180_000 },
+      { label: 'transfer done or needs-reconnect', timeout: 180_000 }
     );
 
     let isDone = await page.evaluate(() => {
@@ -346,8 +375,11 @@ async function main() {
       step('Transferring application image');
       await waitForPredicate(
         page,
-        () => { const btn = document.getElementById('btn-dfu'); return btn && !btn.disabled; },
-        { label: 'Update Firmware button re-enabled', timeout: 10_000 },
+        () => {
+          const btn = document.getElementById('btn-dfu');
+          return btn && !btn.disabled;
+        },
+        { label: 'Update Firmware button re-enabled', timeout: 10_000 }
       );
       await page.click('#btn-dfu');
 
@@ -373,15 +405,21 @@ async function main() {
 
         await waitForPredicate(
           page,
-          () => { const btn = document.getElementById('btn-dfu'); return btn && !btn.disabled; },
-          { label: 'btn-dfu re-enabled after crash retry', timeout: 30_000 },
+          () => {
+            const btn = document.getElementById('btn-dfu');
+            return btn && !btn.disabled;
+          },
+          { label: 'btn-dfu re-enabled after crash retry', timeout: 30_000 }
         );
         await page.click('#btn-dfu');
 
         await waitForPredicate(
           page,
-          () => { const btn = document.getElementById('btn-dfu'); return btn && btn.textContent.includes('Done'); },
-          { label: 'app image transfer completion (crash retry)', timeout: 180_000 },
+          () => {
+            const btn = document.getElementById('btn-dfu');
+            return btn && btn.textContent.includes('Done');
+          },
+          { label: 'app image transfer completion (crash retry)', timeout: 180_000 }
         );
       } else if (!appDone) {
         throw new Error('App transfer neither completed nor requested reconnect');
@@ -400,7 +438,9 @@ async function main() {
       const ssPath = resolve('nordic-browser-test-failure.png');
       await page.screenshot({ path: ssPath, fullPage: true });
       info(`screenshot saved: ${ssPath}`);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     process.exit(1);
   } finally {
     await browser.close();
@@ -413,5 +453,12 @@ const timer = setTimeout(() => {
 }, TIMEOUT_MS);
 
 main()
-  .then(() => { clearTimeout(timer); process.exit(0); })
-  .catch((err) => { clearTimeout(timer); fail(err.message); process.exit(1); });
+  .then(() => {
+    clearTimeout(timer);
+    process.exit(0);
+  })
+  .catch((err) => {
+    clearTimeout(timer);
+    fail(err.message);
+    process.exit(1);
+  });

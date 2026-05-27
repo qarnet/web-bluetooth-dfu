@@ -37,6 +37,7 @@ node tools/nordic-dfu-test.mjs <path-to-package.zip>
 ```
 
 Environment:
+
 - `APP_NAME` — device name in application mode (default "Nordic_Buttonless")
 - `BOOTLOADER_NAME` — name after buttonless reboot (default "DfuTest")
 - `DEVICE_MAC` — skip name scan, connect directly
@@ -61,14 +62,17 @@ DFU flow through the DOM.
 ### Prerequisites
 
 1. **HTTPS server running** in another terminal:
+
    ```bash
    ./serve.py
    ```
 
 2. **Puppeteer installed** in `tools/`:
+
    ```bash
    cd tools && npm install
    ```
+
    Puppeteer downloads its own Chrome binary automatically (~150 MB).
 
 3. **Chrome Web Bluetooth flag** — the test script passes
@@ -85,14 +89,15 @@ make browser-test-headless   # same flow under Xvfb (no display required)
 Both targets flash the v1 baseline first, then drive the full DFU flow against
 the freshly-flashed device. The `-headless` variant wraps the node invocation
 in `xvfb-run` so it works on machines without an X server (CI, WSL2, headless
-Linux hosts). Web Bluetooth still requires a *headed* Chrome — `HEADLESS=1`
+Linux hosts). Web Bluetooth still requires a _headed_ Chrome — `HEADLESS=1`
 toggles Puppeteer's headless mode, which disables Web Bluetooth entirely and
 will fail; use the Xvfb target instead.
 
 The test will:
+
 1. Open Chrome
 2. Load `https://localhost:8443`
- 3. Upload `test/fixtures/smp/zephyr.signed.bin`
+3. Upload `test/fixtures/smp/zephyr.signed.bin`
 4. Click **Scan & Connect**
 5. Select the "Zephyr" device from the native picker
 6. Click **Update Firmware**
@@ -132,14 +137,14 @@ node tools/nordic-browser-dfu-test.mjs --multi-image path/to/package.zip
 
 ### Environment variables
 
-| Variable | Default | Description |
-|---|---|---|
-| `APP_URL` | `https://localhost:8443` | URL the test navigates to |
-| `DEVICE_NAME` | `Zephyr` (SMP) / `DfuTarg` (Nordic) | BLE advertised name to select |
-| `BOOTLOADER_NAME` | `DfuTest` | Name after Nordic buttonless reboot |
-| `PUPPETEER_CHROME` | bundled Chrome | Path to custom Chrome binary |
-| `HEADLESS` | `0` (visible) | Set `1` to run without UI |
-| `TIMEOUT_MS` | `300000` (5 min) | Global test timeout |
+| Variable           | Default                             | Description                         |
+| ------------------ | ----------------------------------- | ----------------------------------- |
+| `APP_URL`          | `https://localhost:8443`            | URL the test navigates to           |
+| `DEVICE_NAME`      | `Zephyr` (SMP) / `DfuTarg` (Nordic) | BLE advertised name to select       |
+| `BOOTLOADER_NAME`  | `DfuTest`                           | Name after Nordic buttonless reboot |
+| `PUPPETEER_CHROME` | bundled Chrome                      | Path to custom Chrome binary        |
+| `HEADLESS`         | `0` (visible)                       | Set `1` to run without UI           |
+| `TIMEOUT_MS`       | `300000` (5 min)                    | Global test timeout                 |
 
 ### Troubleshooting browser tests
 
@@ -151,7 +156,7 @@ node tools/nordic-browser-dfu-test.mjs --multi-image path/to/package.zip
 ### Running headless (no display) — Linux / CI / WSL2
 
 `make browser-test-headless` wraps the test in `xvfb-run`. Web Bluetooth requires
-a *headed* Chrome, so the trick is: Xvfb gives Chrome a virtual X server, Chrome
+a _headed_ Chrome, so the trick is: Xvfb gives Chrome a virtual X server, Chrome
 runs in graphical mode against it, and the BLE stack still talks to real BlueZ.
 
 Prerequisites:
@@ -341,17 +346,17 @@ The sniffer decodes SMP frames inside GATT notifications — you can see exactly
 
 ## Common failure modes
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| Device picker is empty / no devices found | Device not advertising, or built without SMP BLE enabled | Check Kconfig, power-cycle device |
-| Connects but `listImages` times out | SMP not responding — notifications not enabled or wrong characteristic | Check device logs over RTT/UART |
-| Upload starts but stalls at 0% | Chunk too large for negotiated MTU | Auto-negotiated internally; if stall persists, reconnect or reduce MTU in firmware
-| Upload completes but device doesn't reboot | `testImage` or `resetDevice` failed | Check DevTools console for rc codes |
-| After reboot, slot 0 still shows `1.0.0` | MCUboot swap failed — image hash mismatch or image not valid | Make sure you're uploading `zephyr.signed.bin` not `zephyr.bin` |
-| `Bad MCUboot magic` error in UI | Wrong file selected | Use `build/zephyr/zephyr.signed.bin`, not the `.hex` or unsigned `.bin` |
-| Legacy DFU hard-stop message | Device advertises `0x1530` service | Upgrade to Secure DFU bootloader |
-| Puppeteer "Web Bluetooth unavailable" | Stale Puppeteer Chrome (<120) or `HEADLESS=1` set | `npm install` in `tools/`; never set `HEADLESS=1` for BLE flows |
-| Puppeteer "Upload failed: Bad state" | Slot 0 active+unconfirmed from prior run | `make flash` before re-running (or use `make browser-test-headless` which chains it) |
-| Puppeteer device chooser times out | DK not advertising or wrong name | Check `DEVICE_NAME` env var, power-cycle DK |
+| Symptom                                    | Likely cause                                                           | Fix                                                                                  |
+| ------------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Device picker is empty / no devices found  | Device not advertising, or built without SMP BLE enabled               | Check Kconfig, power-cycle device                                                    |
+| Connects but `listImages` times out        | SMP not responding — notifications not enabled or wrong characteristic | Check device logs over RTT/UART                                                      |
+| Upload starts but stalls at 0%             | Chunk too large for negotiated MTU                                     | Auto-negotiated internally; if stall persists, reconnect or reduce MTU in firmware   |
+| Upload completes but device doesn't reboot | `testImage` or `resetDevice` failed                                    | Check DevTools console for rc codes                                                  |
+| After reboot, slot 0 still shows `1.0.0`   | MCUboot swap failed — image hash mismatch or image not valid           | Make sure you're uploading `zephyr.signed.bin` not `zephyr.bin`                      |
+| `Bad MCUboot magic` error in UI            | Wrong file selected                                                    | Use `build/zephyr/zephyr.signed.bin`, not the `.hex` or unsigned `.bin`              |
+| Legacy DFU hard-stop message               | Device advertises `0x1530` service                                     | Upgrade to Secure DFU bootloader                                                     |
+| Puppeteer "Web Bluetooth unavailable"      | Stale Puppeteer Chrome (<120) or `HEADLESS=1` set                      | `npm install` in `tools/`; never set `HEADLESS=1` for BLE flows                      |
+| Puppeteer "Upload failed: Bad state"       | Slot 0 active+unconfirmed from prior run                               | `make flash` before re-running (or use `make browser-test-headless` which chains it) |
+| Puppeteer device chooser times out         | DK not advertising or wrong name                                       | Check `DEVICE_NAME` env var, power-cycle DK                                          |
 
 (End of file - total 274 lines)

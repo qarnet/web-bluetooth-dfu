@@ -5,7 +5,8 @@ import { SecureDfuPackage } from '../nordic/package.js';
 import JSZip from '../vendor/jszip.mjs';
 
 // Read a real fixture from the Nordic SDK (not committed to this repo)
-const FIXTURE_ZIP = '/mnt/c/Users/thomas-win/Nextcloud/Development-Resources/nrf5SDK/nRF5_SDK_17.1.0_ddde560/examples/dfu/secure_dfu_test_images/ble/nrf52840/ble_app_buttonless_dfu_without_bonds_s140.zip';
+const FIXTURE_ZIP =
+  '/mnt/c/Users/thomas-win/Nextcloud/Development-Resources/nrf5SDK/nRF5_SDK_17.1.0_ddde560/examples/dfu/secure_dfu_test_images/ble/nrf52840/ble_app_buttonless_dfu_without_bonds_s140.zip';
 
 describe('SecureDfuPackage', () => {
   it('should parse a real Nordic DFU package', async () => {
@@ -77,7 +78,7 @@ describe('SecureDfuPackage', () => {
     const pkg = new SecureDfuPackage(buf);
     await pkg.load(JSZip);
     const base = await pkg.getBaseImage();
-    const app  = await pkg.getAppImage();
+    const app = await pkg.getAppImage();
     assert.ok(base, 'should return base image');
     assert.strictEqual(base.type, 'softdevice');
     assert.ok(app, 'should return app image');

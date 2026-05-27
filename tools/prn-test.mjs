@@ -12,15 +12,21 @@ const NORDIC_SERVICE_UUID = REGISTRY.nordic.serviceUuid;
 
 EventEmitter.defaultMaxListeners = 0;
 
-function step(msg) { console.log(`\n▶ ${msg}`); }
-function info(msg)  { console.log(`  ${msg}`); }
+function step(msg) {
+  console.log(`\n▶ ${msg}`);
+}
+function info(msg) {
+  console.log(`  ${msg}`);
+}
 
 async function connectWithRetry(device, attempts = 8) {
   for (let i = 1; i <= attempts; i++) {
-    try { await device.connect(); return; }
-    catch (err) {
+    try {
+      await device.connect();
+      return;
+    } catch (err) {
       if (i === attempts) throw new Error(`connect failed after ${attempts} tries: ${err.message}`);
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise((r) => setTimeout(r, 2000));
     }
   }
 }
@@ -31,7 +37,8 @@ async function buildSession(device) {
   const service = await gatt.getPrimaryService(NORDIC_SERVICE_UUID);
   const charUuids = await service.characteristics();
   const charMap = new Map();
-  let hasControl = false, hasPacket = false;
+  let hasControl = false,
+    hasPacket = false;
   for (const uuid of charUuids) {
     const rc = await service.getCharacteristic(uuid);
     charMap.set(uuid, new BleCharacteristic(rc, uuid));
@@ -50,12 +57,17 @@ async function findDevice(adapter, name, maxWait = 30000) {
   while (Date.now() < deadline) {
     for (const m of await adapter.devices()) {
       const dev = await adapter.getDevice(m);
-      let n1 = '', n2 = '';
-      try { n1 = await dev.getName(); } catch {}
-      try { n2 = await dev.getAlias(); } catch {}
+      let n1 = '',
+        n2 = '';
+      try {
+        n1 = await dev.getName();
+      } catch {}
+      try {
+        n2 = await dev.getAlias();
+      } catch {}
       if (n1 === name || n1.includes(name) || n2 === name || n2.includes(name)) return dev;
     }
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 1000));
   }
   throw new Error(`No BLE device named "${name}" found within ${maxWait}ms`);
 }
@@ -79,14 +91,16 @@ async function main() {
     let controlWrites = [];
 
     // Intercept control point writes by replacing the char's writeValueWithResponse
-    const controlUuid = [...session.services.get(NORDIC_SERVICE_UUID).characteristics.keys()]
-      .find(u => u.toLowerCase().includes('8ec90001'));
+    const controlUuid = [...session.services.get(NORDIC_SERVICE_UUID).characteristics.keys()].find(
+      (u) => u.toLowerCase().includes('8ec90001')
+    );
     const controlChar = session.services.get(NORDIC_SERVICE_UUID).characteristics.get(controlUuid);
     const origWrite = controlChar.writeValueWithResponse.bind(controlChar);
     controlChar.writeValueWithResponse = async (chunk) => {
       const buf = Buffer.from(chunk);
       controlWrites.push(buf.toString('hex'));
-      if (buf[0] === 0x02) { // PRN setup opcode
+      if (buf[0] === 0x02) {
+        // PRN setup opcode
         prnWritten = true;
         prnValue = buf.readUInt16LE(1);
       }
@@ -104,7 +118,7 @@ async function main() {
       console.log('\n✓ PASS — PRN setup verified');
     } else {
       info('No PRN write detected — checking for object create');
-      if (controlWrites.some(w => w.startsWith('01'))) {
+      if (controlWrites.some((w) => w.startsWith('01'))) {
         info('Object create detected, PRN may be configured elsewhere');
         console.log('\n✓ PASS — PRN path reachable');
       } else {
@@ -113,7 +127,9 @@ async function main() {
     }
 
     await provider.detach();
-    try { await device.disconnect(); } catch {}
+    try {
+      await device.disconnect();
+    } catch {}
   } finally {
     destroy();
   }
@@ -121,4 +137,7 @@ async function main() {
 
 main()
   .then(() => process.exit(0))
-  .catch((e) => { console.error(`\n✗ FAIL — ${e.message}`); process.exit(1); });
+  .catch((e) => {
+    console.error(`\n✗ FAIL — ${e.message}`);
+    process.exit(1);
+  });

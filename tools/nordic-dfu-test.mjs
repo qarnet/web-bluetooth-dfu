@@ -29,8 +29,12 @@ const NORDIC_SERVICE_UUID = REGISTRY.nordic.serviceUuid;
 // node-ble adds a D-Bus listener per discovered device — lift the default cap.
 EventEmitter.defaultMaxListeners = 0;
 
-function step(msg)  { console.log(`\n▶ ${msg}`); }
-function info(msg)  { console.log(`  ${msg}`); }
+function step(msg) {
+  console.log(`\n▶ ${msg}`);
+}
+function info(msg) {
+  console.log(`  ${msg}`);
+}
 
 // ── progress widget ───────────────────────────────────────────────────────────
 
@@ -39,7 +43,9 @@ function drawProgress(current, total) {
   const width = 30;
   const filled = Math.round((pct / 100) * width);
   const bar = '#'.repeat(filled) + '-'.repeat(width - filled);
-  process.stdout.write(`\r  [${bar}] ${String(pct).padStart(3)}%  ${(current/1024).toFixed(1)}/${(total/1024).toFixed(1)} KB`);
+  process.stdout.write(
+    `\r  [${bar}] ${String(pct).padStart(3)}%  ${(current / 1024).toFixed(1)}/${(total / 1024).toFixed(1)} KB`
+  );
 }
 
 // ── sleeping helper ─────────────────────────────────────────────────────────
@@ -51,7 +57,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function removeBlueZ(mac) {
   try {
     execSync(`bluetoothctl remove ${mac.toUpperCase()}`, { stdio: 'ignore', timeout: 5000 });
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 /** Discover-on / discover-off wrapper to avoid D-Bus match-rule leaks. */
@@ -64,7 +72,11 @@ async function* discover(adapter) {
       await sleep(500);
     }
   } finally {
-    try { await adapter.stopDiscovery(); } catch { /* ignore */ }
+    try {
+      await adapter.stopDiscovery();
+    } catch {
+      /* ignore */
+    }
   }
 }
 
@@ -78,9 +90,12 @@ async function findDevice(adapter, name, maxWait = 30000) {
       for (const m of devPaths) {
         try {
           const dev = await adapter.getDevice(m);
-          const advName = (await dev.getName().catch(() => '')) || (await dev.getAlias().catch(() => ''));
+          const advName =
+            (await dev.getName().catch(() => '')) || (await dev.getAlias().catch(() => ''));
           if (advName === name || advName.includes(name)) return dev;
-        } catch { /* next */ }
+        } catch {
+          /* next */
+        }
       }
       await sleep(1000);
     }
@@ -94,8 +109,10 @@ async function findDevice(adapter, name, maxWait = 30000) {
 
 async function connectWithRetry(device, attempts = 8) {
   for (let i = 1; i <= attempts; i++) {
-    try { await device.connect(); return; }
-    catch (err) {
+    try {
+      await device.connect();
+      return;
+    } catch (err) {
       if (i === attempts) throw new Error(`connect failed after ${attempts} tries: ${err.message}`);
       await sleep(2000);
     }
@@ -129,14 +146,14 @@ async function main() {
   }
 
   const zipBuffer = readFileSync(resolve(zipPath));
-  info(`ZIP package: ${zipPath} (${(zipBuffer.byteLength/1024).toFixed(1)} KB)`);
+  info(`ZIP package: ${zipPath} (${(zipBuffer.byteLength / 1024).toFixed(1)} KB)`);
 
   // Structural sanity
   const pkg = new SecureDfuPackage(
     zipBuffer.buffer.slice(zipBuffer.byteOffset, zipBuffer.byteOffset + zipBuffer.byteLength)
   );
   await pkg.load(JSZip);
-  const image = await pkg.getAppImage() ?? await pkg.getBaseImage();
+  const image = (await pkg.getAppImage()) ?? (await pkg.getBaseImage());
   if (!image) throw new Error('No image found in ZIP package');
   info(`manifest type: ${image.type}, init=${image.initFile}, image=${image.imageFile}`);
 
@@ -171,7 +188,9 @@ async function main() {
       const { message, level } = e.detail;
       if (level === 'error' || level === 'info') info(`[${level}] ${message}`);
     });
-    provider.addEventListener('needs-reconnect', () => { needsReconnect = true; });
+    provider.addEventListener('needs-reconnect', () => {
+      needsReconnect = true;
+    });
 
     await provider.attach(session);
 
@@ -221,7 +240,11 @@ async function main() {
       process.stdout.write('\n');
       info(`DFU complete in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
       await provider.detach();
-      try { await device.disconnect(); } catch { /* ignore */ }
+      try {
+        await device.disconnect();
+      } catch {
+        /* ignore */
+      }
       console.log(`\n✓ PASS — Nordic Secure DFU complete.`);
       return;
     }
@@ -257,7 +280,11 @@ async function main() {
     process.stdout.write('\n');
     info(`DFU complete in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     await provider.detach();
-    try { await device.disconnect(); } catch { /* ignore */ }
+    try {
+      await device.disconnect();
+    } catch {
+      /* ignore */
+    }
     console.log(`\n✓ PASS — Nordic Secure DFU complete.`);
   } finally {
     destroy();

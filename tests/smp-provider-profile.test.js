@@ -20,7 +20,12 @@ describe('SmpProvider transfer profile', () => {
   it('applies aggressive transport settings', () => {
     const p = new SmpProvider({ mtu: 244 });
     let cfg;
-    p._mcuMgr = { configureTransport: (c) => { cfg = c; }, setReliableMode: () => {} };
+    p._mcuMgr = {
+      configureTransport: (c) => {
+        cfg = c;
+      },
+      setReliableMode: () => {},
+    };
     p.setTransferProfile('aggressive');
     assert.strictEqual(cfg.mtu, 244);
     assert.strictEqual(cfg.reliableMode, false);

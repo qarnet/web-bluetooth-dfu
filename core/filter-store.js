@@ -1,7 +1,7 @@
 const STORAGE_KEY = 'dfu-filter-config';
 
 const DEFAULTS = {
-  scanAll:    true,
+  scanAll: true,
   namePrefix: '',
   serviceUuid: '',
 };
@@ -13,8 +13,8 @@ export function loadFilterConfig() {
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw);
     return {
-      scanAll:     typeof parsed.scanAll === 'boolean' ? parsed.scanAll : DEFAULTS.scanAll,
-      namePrefix:  String(parsed.namePrefix || ''),
+      scanAll: typeof parsed.scanAll === 'boolean' ? parsed.scanAll : DEFAULTS.scanAll,
+      namePrefix: String(parsed.namePrefix || ''),
       serviceUuid: String(parsed.serviceUuid || ''),
     };
   } catch {

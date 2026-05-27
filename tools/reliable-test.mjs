@@ -17,8 +17,12 @@ EventEmitter.defaultMaxListeners = 0;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function step(msg)  { console.log(`\n▶ ${msg}`); }
-function info(msg)  { console.log(`  ${msg}`); }
+function step(msg) {
+  console.log(`\n▶ ${msg}`);
+}
+function info(msg) {
+  console.log(`  ${msg}`);
+}
 
 async function findDevice(adapter, name) {
   if (!(await adapter.isDiscovering())) await adapter.startDiscovery();
@@ -27,8 +31,13 @@ async function findDevice(adapter, name) {
     for (const m of await adapter.devices()) {
       const dev = await adapter.getDevice(m);
       let advName = null;
-      try { advName = await dev.getName(); }
-      catch { try { advName = await dev.getAlias(); } catch {} }
+      try {
+        advName = await dev.getName();
+      } catch {
+        try {
+          advName = await dev.getAlias();
+        } catch {}
+      }
       if (advName === name) return dev;
     }
     await sleep(1000);
@@ -38,8 +47,10 @@ async function findDevice(adapter, name) {
 
 async function connectWithRetry(device, attempts = 8) {
   for (let i = 1; i <= attempts; i++) {
-    try { await device.connect(); return; }
-    catch (err) {
+    try {
+      await device.connect();
+      return;
+    } catch (err) {
       if (i === attempts) throw new Error(`connect failed after ${attempts} tries: ${err.message}`);
       await sleep(2000);
     }
@@ -91,7 +102,9 @@ async function main() {
     provider.setReliableMode(true);
 
     let progressCount = 0;
-    provider.addEventListener('progress', () => { progressCount++; });
+    provider.addEventListener('progress', () => {
+      progressCount++;
+    });
     provider.addEventListener('log', (e) => {
       // Log only non-upload messages to avoid noise
       if (!e.detail.message.includes('Upload')) {

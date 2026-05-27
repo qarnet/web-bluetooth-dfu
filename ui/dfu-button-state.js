@@ -10,10 +10,7 @@ export function shouldDisableDfuButton({
   if (isBusy || !hasFirmware || !hasProvider) return true;
 
   const missingNordicSelection =
-    firmwareProtocol === 'nordic' &&
-    nordicRowVisible &&
-    !nordicBaseChecked &&
-    !nordicAppChecked;
+    firmwareProtocol === 'nordic' && nordicRowVisible && !nordicBaseChecked && !nordicAppChecked;
 
   return missingNordicSelection;
 }

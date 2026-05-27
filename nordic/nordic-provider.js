@@ -11,8 +11,12 @@ import JSZip from '../vendor/jszip.js';
 import { REGISTRY } from '../core/registry.js';
 
 export class NordicProvider extends DfuProvider {
-  static get id()    { return 'nordic'; }
-  static get label() { return 'Nordic Secure DFU'; }
+  static get id() {
+    return 'nordic';
+  }
+  static get label() {
+    return 'Nordic Secure DFU';
+  }
   static get capabilities() {
     return {
       hasSlots: false,
@@ -27,7 +31,7 @@ export class NordicProvider extends DfuProvider {
   constructor() {
     super();
     this._dfu = new SecureDfu(CRC32);
-    this._dfu.addEventListener('log',      (e) => this.emit('log',      e.detail));
+    this._dfu.addEventListener('log', (e) => this.emit('log', e.detail));
     this._dfu.addEventListener('progress', (e) => this.emit('progress', e.detail));
     this._appImage = null;
     this._baseImage = null;
@@ -47,7 +51,7 @@ export class NordicProvider extends DfuProvider {
       ...info,
       // Pre-load the image objects so runUpdate can use them
       _rawBase: await pkg.getBaseImage(),
-      _rawApp:  await pkg.getAppImage(),
+      _rawApp: await pkg.getAppImage(),
     };
   }
 
@@ -72,12 +76,17 @@ export class NordicProvider extends DfuProvider {
 
     // Check if we're in buttonless app mode (no control/packet, only buttonless)
     const hasControl = chars.has(REGISTRY.nordic.controlUuid);
-    const hasPacket  = chars.has(REGISTRY.nordic.packetUuid);
+    const hasPacket = chars.has(REGISTRY.nordic.packetUuid);
 
     if (!hasControl || !hasPacket) {
-      this.emit('log', { message: 'Device in app mode — triggering buttonless DFU…', level: 'info' });
+      this.emit('log', {
+        message: 'Device in app mode — triggering buttonless DFU…',
+        level: 'info',
+      });
       const withBonds = chars.has(REGISTRY.nordic.buttonlessWithBondsUuid);
-      const needsReconnect = await this._dfu.triggerButtonless(device, withBonds, [...chars.values()]);
+      const needsReconnect = await this._dfu.triggerButtonless(device, withBonds, [
+        ...chars.values(),
+      ]);
       if (needsReconnect) {
         this.emit('needs-reconnect', {});
         return;
@@ -129,15 +138,18 @@ export class NordicProvider extends DfuProvider {
   }
 
   async loadFirmware(file) {
-    const buffer = (typeof File !== 'undefined' && file instanceof File)
-      ? await file.arrayBuffer()
-      : (file instanceof Uint8Array) ? file.buffer : file;
+    const buffer =
+      typeof File !== 'undefined' && file instanceof File
+        ? await file.arrayBuffer()
+        : file instanceof Uint8Array
+          ? file.buffer
+          : file;
 
     const pkg = new SecureDfuPackage(buffer);
     await pkg.load(JSZip);
 
     this._baseImage = await pkg.getBaseImage();
-    this._appImage  = await pkg.getAppImage();
+    this._appImage = await pkg.getAppImage();
     this._baseTransferred = false;
 
     if (!this._baseImage && !this._appImage) {
@@ -166,7 +178,10 @@ export class NordicProvider extends DfuProvider {
         return { needsContinue: true };
       }
       this.emit('phase', { phase: 'execute', label: 'DFU complete' });
-      this.emit('log', { message: 'Base firmware transfer complete. Device will reboot automatically.', level: 'ok' });
+      this.emit('log', {
+        message: 'Base firmware transfer complete. Device will reboot automatically.',
+        level: 'ok',
+      });
       return { needsConfirm: false, complete: true };
     }
 
@@ -176,7 +191,8 @@ export class NordicProvider extends DfuProvider {
     if (wantApp) {
       if (!this._dfu.isReady()) {
         this.emit('log', {
-          message: 'DFU transport not ready after reconnect. Requesting reconnect before app transfer…',
+          message:
+            'DFU transport not ready after reconnect. Requesting reconnect before app transfer…',
           level: 'warn',
         });
         this.emit('needs-reconnect', { continuationTimeout: 10000 });
@@ -238,7 +254,9 @@ export class NordicProvider extends DfuProvider {
     const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
     if (!globalThis.crypto?.subtle) return 'sha256-unavailable';
     const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes);
-    return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+    return Array.from(new Uint8Array(digest))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
   }
 
   async _probeContinuationReady() {
@@ -247,7 +265,10 @@ export class NordicProvider extends DfuProvider {
     for (let i = 0; i < attempts; i++) {
       try {
         if (i > 0) {
-          this.emit('log', { message: `Continuation readiness retry ${i + 1}/${attempts}…`, level: 'warn' });
+          this.emit('log', {
+            message: `Continuation readiness retry ${i + 1}/${attempts}…`,
+            level: 'warn',
+          });
         }
         return await this._dfu.probeReady();
       } catch (err) {

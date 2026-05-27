@@ -1,14 +1,27 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
-import { loadFilterConfig, saveFilterConfig, isValidUuid, normalizeUuid } from '../core/filter-store.js';
+import {
+  loadFilterConfig,
+  saveFilterConfig,
+  isValidUuid,
+  normalizeUuid,
+} from '../core/filter-store.js';
 
 // Mock localStorage
 global.localStorage = {
   _data: {},
-  getItem(key) { return this._data[key] || null; },
-  setItem(key, val) { this._data[key] = val; },
-  removeItem(key) { delete this._data[key]; },
-  clear() { this._data = {}; },
+  getItem(key) {
+    return this._data[key] || null;
+  },
+  setItem(key, val) {
+    this._data[key] = val;
+  },
+  removeItem(key) {
+    delete this._data[key];
+  },
+  clear() {
+    this._data = {};
+  },
 };
 
 describe('filter-store', () => {
@@ -22,7 +35,11 @@ describe('filter-store', () => {
 
   it('should persist and restore config', () => {
     localStorage.clear();
-    saveFilterConfig({ scanAll: false, namePrefix: 'Zephyr', serviceUuid: '8d53dc1d-1db7-4cd3-868b-8a527460aa84' });
+    saveFilterConfig({
+      scanAll: false,
+      namePrefix: 'Zephyr',
+      serviceUuid: '8d53dc1d-1db7-4cd3-868b-8a527460aa84',
+    });
     const cfg = loadFilterConfig();
     assert.strictEqual(cfg.scanAll, false);
     assert.strictEqual(cfg.namePrefix, 'Zephyr');

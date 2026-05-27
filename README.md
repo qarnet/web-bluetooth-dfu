@@ -6,11 +6,11 @@ Supports **SMP / MCUboot** (Zephyr / nRF Connect SDK) and **Nordic Secure DFU**
 
 Supports three DFU modes:
 
-| Mode | Protocol | Image | Multi-image | Test Status |
-|---|---|---|---|---|
-| **SMP / MCUboot** | Zephyr / NCS | `.bin` (signed) | Slot upload + test + confirm | ✅ Passing |
-| **Nordic Secure DFU** | nRF5 SDK 17.1.0 | `.zip` (single) | Init + firmware transfer | ✅ Passing |
-| **Nordic Secure DFU Multi-image** | nRF5 SDK 17.1.0 | `.zip` (base + app) | Base → reboot → app | ✅ Passing |
+| Mode                              | Protocol        | Image               | Multi-image                  | Test Status |
+| --------------------------------- | --------------- | ------------------- | ---------------------------- | ----------- |
+| **SMP / MCUboot**                 | Zephyr / NCS    | `.bin` (signed)     | Slot upload + test + confirm | ✅ Passing  |
+| **Nordic Secure DFU**             | nRF5 SDK 17.1.0 | `.zip` (single)     | Init + firmware transfer     | ✅ Passing  |
+| **Nordic Secure DFU Multi-image** | nRF5 SDK 17.1.0 | `.zip` (base + app) | Base → reboot → app          | ✅ Passing  |
 
 No installation. No build step. Open the page, pick a file, flash.
 
@@ -18,11 +18,11 @@ No installation. No build step. Open the page, pick a file, flash.
 
 ## Browser support
 
-| Browser | Support |
-|---|---|
-| Chrome / Edge (desktop, Windows / macOS / Linux) | ✅ |
-| Chrome (Android) | ✅ |
-| Safari / Firefox / iOS | ❌ — Web Bluetooth not supported |
+| Browser                                          | Support                          |
+| ------------------------------------------------ | -------------------------------- |
+| Chrome / Edge (desktop, Windows / macOS / Linux) | ✅                               |
+| Chrome (Android)                                 | ✅                               |
+| Safari / Firefox / iOS                           | ❌ — Web Bluetooth not supported |
 
 HTTPS is required (Web Bluetooth restriction). See [Running locally](#running-locally) for options.
 
@@ -66,10 +66,10 @@ nRF Connect / nrfutil.
 Default is 128 bytes per SMP packet — safe for all MTU sizes. You can increase
 chunk size up to 244 bytes for faster transfers.
 
-| MTU | Chunk | Throughput | 256 KB image |
-|---|---|---|---|
-| 247 (typical nRF) | 128 B | ~1–2 KB/s | ~2–4 min |
-| 247 (typical nRF) | 244 B | ~2–4 KB/s | ~1–2 min |
+| MTU               | Chunk | Throughput | 256 KB image |
+| ----------------- | ----- | ---------- | ------------ |
+| 247 (typical nRF) | 128 B | ~1–2 KB/s  | ~2–4 min     |
+| 247 (typical nRF) | 244 B | ~2–4 KB/s  | ~1–2 min     |
 
 ---
 
@@ -157,26 +157,26 @@ tools/
 
 ## SMP / BLE details
 
-| Item | Value |
-|---|---|
-| GATT Service UUID | `8D53DC1D-1DB7-4CD3-868B-8A527460AA84` |
+| Item                     | Value                                  |
+| ------------------------ | -------------------------------------- |
+| GATT Service UUID        | `8D53DC1D-1DB7-4CD3-868B-8A527460AA84` |
 | GATT Characteristic UUID | `DA2E7828-FBCE-4E01-AE9E-261174997C48` |
-| Requests | GATT Write Without Response |
-| Responses | GATT Notifications |
-| Payload encoding | CBOR |
+| Requests                 | GATT Write Without Response            |
+| Responses                | GATT Notifications                     |
+| Payload encoding         | CBOR                                   |
 
 ## Nordic Secure DFU / BLE details
 
-| Item | Value |
-|---|---|
-| GATT Service UUID | `FE59` (Nordic DFU) |
-| Control Point UUID | `8EC90001-F315-4F60-9FB8-838830DAEA50` |
-| Packet UUID | `8EC90002-F315-4F60-9FB8-838830DAEA50` |
-| Buttonless (no bonds) | `8EC90003-F315-4F60-9FB8-838830DAEA50` |
-| Buttonless (with bonds) | `8EC90004-F315-4F60-9FB8-838830DAEA50` |
-| Packet writes | GATT Write Without Response |
-| Control writes | GATT Write With Response |
-| Payload | `.zip` package (init packet + firmware) |
+| Item                    | Value                                   |
+| ----------------------- | --------------------------------------- |
+| GATT Service UUID       | `FE59` (Nordic DFU)                     |
+| Control Point UUID      | `8EC90001-F315-4F60-9FB8-838830DAEA50`  |
+| Packet UUID             | `8EC90002-F315-4F60-9FB8-838830DAEA50`  |
+| Buttonless (no bonds)   | `8EC90003-F315-4F60-9FB8-838830DAEA50`  |
+| Buttonless (with bonds) | `8EC90004-F315-4F60-9FB8-838830DAEA50`  |
+| Packet writes           | GATT Write Without Response             |
+| Control writes          | GATT Write With Response                |
+| Payload                 | `.zip` package (init packet + firmware) |
 
 ---
 

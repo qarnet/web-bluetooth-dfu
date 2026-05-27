@@ -10,6 +10,7 @@ This plan prioritizes reliability and useful operator features without adding a 
 4. Test coverage for image selection and DFU button enable/disable state.
 
 Status:
+
 - [x] Nordic image-level selection shipped.
 - [x] Reconnect ownership simplified to manual reconnect flow.
 - [x] Structured JSON log export added.
@@ -28,6 +29,7 @@ Status:
 3. Add browser E2E assertions around continuation retry states.
 
 Status:
+
 - [x] Continuation readiness retry/backoff policy implemented.
 - [x] Transfer profiles implemented (conservative/balanced/aggressive).
 - [x] Browser E2E reconnect/continuation assertions updated.
@@ -39,6 +41,7 @@ Status:
 3. Improve rc error translation and remediation hints.
 
 Status:
+
 - [x] SMP utility commands added in UI (echo/reset).
 - [x] Read-only diagnostics actions added (slot refresh + diagnostics shortcut).
 - [x] RC translation hints are present and kept in provider mapping.
@@ -50,6 +53,7 @@ Status:
 3. Expand docs with troubleshooting decision tree per protocol.
 
 Status:
+
 - [x] Preflight metadata panel added.
 - [x] Session JSON export now includes protocol decisions and timestamps.
 - [x] Troubleshooting decision tree added.

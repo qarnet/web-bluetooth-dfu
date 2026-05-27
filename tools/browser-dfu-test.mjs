@@ -31,29 +31,40 @@ import puppeteer from 'puppeteer';
 import { resolve } from 'node:path';
 import { readFileSync } from 'node:fs';
 
-const APP_URL     = process.env.APP_URL     || 'https://localhost:8443';
+const APP_URL = process.env.APP_URL || 'https://localhost:8443';
 const DEVICE_NAME = process.env.DEVICE_NAME || 'Zephyr';
-const HEADLESS    = process.env.HEADLESS    === '1';
-const TIMEOUT_MS  = parseInt(process.env.TIMEOUT_MS, 10) || 300_000;
-const CHROME_BIN  = process.env.PUPPETEER_CHROME || undefined;
+const HEADLESS = process.env.HEADLESS === '1';
+const TIMEOUT_MS = parseInt(process.env.TIMEOUT_MS, 10) || 300_000;
+const CHROME_BIN = process.env.PUPPETEER_CHROME || undefined;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function step(msg)  { console.log(`\n▶ ${msg}`); }
-function info(msg)  { console.log(`  ${msg}`); }
-function pass(msg)  { console.log(`\n✓ ${msg}`); }
-function fail(msg)  { console.error(`\n✗ ${msg}`); }
+function step(msg) {
+  console.log(`\n▶ ${msg}`);
+}
+function info(msg) {
+  console.log(`  ${msg}`);
+}
+function pass(msg) {
+  console.log(`\n✓ ${msg}`);
+}
+function fail(msg) {
+  console.error(`\n✗ ${msg}`);
+}
 
 async function selectDeviceFromPrompt(devicePrompt, preferredNames, fallbackLabel) {
   const exactNames = preferredNames.filter(Boolean);
   const seen = new Set();
 
   try {
-    const device = await devicePrompt.waitForDevice((d) => {
-      const label = d.name || '(unnamed)';
-      seen.add(label);
-      return exactNames.includes(d.name);
-    }, { timeout: 45_000 });
+    const device = await devicePrompt.waitForDevice(
+      (d) => {
+        const label = d.name || '(unnamed)';
+        seen.add(label);
+        return exactNames.includes(d.name);
+      },
+      { timeout: 45_000 }
+    );
 
     info(`found device: ${device.name} (${device.id})`);
     await devicePrompt.select(device);
@@ -62,7 +73,7 @@ async function selectDeviceFromPrompt(devicePrompt, preferredNames, fallbackLabe
     const advertised = [...seen].sort().join(', ') || '(none observed)';
     throw new Error(
       `No preferred ${fallbackLabel} found. Expected one of [${exactNames.join(', ')}]. ` +
-      `Observed in picker: ${advertised}`
+        `Observed in picker: ${advertised}`
     );
   }
 }
@@ -102,7 +113,7 @@ async function launchBrowser() {
 /** Wait until an element matches a predicate evaluated in the page. */
 async function waitForPredicate(page, fn, opts = {}) {
   const timeout = opts.timeout || 30_000;
-  const label   = opts.label || 'predicate';
+  const label = opts.label || 'predicate';
   try {
     return await page.waitForFunction(fn, { timeout, polling: opts.polling || 'raf' });
   } catch (err) {
@@ -138,7 +149,9 @@ async function main() {
 
   const fw = new Uint8Array(readFileSync(resolve(binPath)));
   const expectedVersion = mcubootVersion(fw);
-  info(`Firmware: ${binPath} (${(fw.byteLength / 1024).toFixed(1)} KB, version ${expectedVersion})`);
+  info(
+    `Firmware: ${binPath} (${(fw.byteLength / 1024).toFixed(1)} KB, version ${expectedVersion})`
+  );
   info(`App URL:  ${APP_URL}`);
   info(`Device:   "${DEVICE_NAME}"`);
   info(`Chrome:   ${CHROME_BIN || 'puppeteer bundled'}`);
@@ -146,7 +159,7 @@ async function main() {
 
   const browser = await launchBrowser();
   const context = await browser.createBrowserContext();
-  const page    = await context.newPage();
+  const page = await context.newPage();
 
   try {
     // ── 1. Load the app ────────────────────────────────────────────────────────
@@ -160,7 +173,9 @@ async function main() {
       return !!b && getComputedStyle(b).display !== 'none';
     });
     if (bannerVisible) {
-      const msg = await page.evaluate(() => document.getElementById('compat-msg')?.textContent || '');
+      const msg = await page.evaluate(
+        () => document.getElementById('compat-msg')?.textContent || ''
+      );
       throw new Error(`Web Bluetooth unavailable in this Chrome profile: ${msg}`);
     }
 
@@ -176,9 +191,11 @@ async function main() {
         const badge = document.getElementById('protocol-badge');
         return badge && badge.style.display !== 'none' && badge.textContent.length > 0;
       },
-      { label: 'protocol badge after file upload' },
+      { label: 'protocol badge after file upload' }
     );
-    const badgeText = await page.evaluate(() => document.getElementById('protocol-badge').textContent);
+    const badgeText = await page.evaluate(
+      () => document.getElementById('protocol-badge').textContent
+    );
     info(`protocol detected: ${badgeText}`);
 
     // ── 3. Connect to BLE device ─────────────────────────────────────────────
@@ -196,16 +213,14 @@ async function main() {
     await waitForPredicate(
       page,
       () => document.getElementById('btn-row-connected').style.display !== 'none',
-      { label: 'connected state', timeout: 60_000 },
+      { label: 'connected state', timeout: 60_000 }
     );
     info('connected');
 
     // Wait for slots to populate
-    await waitForPredicate(
-      page,
-      () => document.querySelectorAll('.slot').length > 0,
-      { label: 'slot list populated' },
-    );
+    await waitForPredicate(page, () => document.querySelectorAll('.slot').length > 0, {
+      label: 'slot list populated',
+    });
     const beforeVersion = await readSlot0Version(page);
     info(`slot 0 version before update: ${beforeVersion}`);
 
@@ -225,7 +240,7 @@ async function main() {
           (btnReconnect && btnReconnect.style.display !== 'none')
         );
       },
-      { label: 'update completion or reconnect request', timeout: 180_000 },
+      { label: 'update completion or reconnect request', timeout: 180_000 }
     );
 
     const needsReconnect = await page.evaluate(() => {
@@ -252,7 +267,7 @@ async function main() {
       await waitForPredicate(
         page,
         () => document.getElementById('btn-row-connected').style.display !== 'none',
-        { label: 'reconnected state', timeout: 60_000 },
+        { label: 'reconnected state', timeout: 60_000 }
       );
       info('reconnected');
 
@@ -263,7 +278,7 @@ async function main() {
           const el = document.getElementById('btn-confirm');
           return el && el.style.display !== 'none';
         },
-        { label: 'confirm button visible' },
+        { label: 'confirm button visible' }
       );
       info('confirm button visible — new image is active but pending');
 
@@ -277,7 +292,7 @@ async function main() {
           const el = document.getElementById('btn-confirm');
           return el && el.textContent.includes('Confirmed');
         },
-        { label: 'confirm complete', timeout: 60000 },
+        { label: 'confirm complete', timeout: 60000 }
       );
       info('image confirmed');
     }
@@ -295,7 +310,7 @@ async function main() {
         const badges = slot.querySelector('.badges')?.textContent || '';
         return badges.includes('confirmed');
       },
-      { label: 'slot 0 confirmed after refresh' },
+      { label: 'slot 0 confirmed after refresh' }
     );
 
     const finalVersion = await readSlot0Version(page);
@@ -317,7 +332,9 @@ async function main() {
       const ssPath = resolve('browser-test-failure.png');
       await page.screenshot({ path: ssPath, fullPage: true });
       info(`screenshot saved: ${ssPath}`);
-    } catch { /* ignore screenshot failure */ }
+    } catch {
+      /* ignore screenshot failure */
+    }
     process.exit(1);
   } finally {
     await browser.close();

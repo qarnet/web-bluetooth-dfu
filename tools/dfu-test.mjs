@@ -28,8 +28,12 @@ EventEmitter.defaultMaxListeners = 0;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function step(msg)  { console.log(`\n▶ ${msg}`); }
-function info(msg)  { console.log(`  ${msg}`); }
+function step(msg) {
+  console.log(`\n▶ ${msg}`);
+}
+function info(msg) {
+  console.log(`  ${msg}`);
+}
 
 /** Parse the version out of an MCUboot image header. */
 function mcubootVersion(bytes) {
@@ -39,23 +43,22 @@ function mcubootVersion(bytes) {
 
 function printSlots(slots) {
   for (const s of slots) {
-    const flags = [
-      s.active    && 'active',
-      s.pending   && 'pending',
-      s.confirmed && 'confirmed',
-    ].filter(Boolean).join(',') || '-';
+    const flags =
+      [s.active && 'active', s.pending && 'pending', s.confirmed && 'confirmed']
+        .filter(Boolean)
+        .join(',') || '-';
     info(`slot ${s.slot}  ${s.version.padEnd(12)} [${flags.padEnd(20)}] ${s.hash.slice(0, 16)}…`);
   }
 }
 
 function drawProgress(offset, total) {
-  const pct    = total ? Math.floor((offset / total) * 100) : 0;
-  const width  = 30;
+  const pct = total ? Math.floor((offset / total) * 100) : 0;
+  const width = 30;
   const filled = Math.round((pct / 100) * width);
-  const bar    = '#'.repeat(filled) + '-'.repeat(width - filled);
+  const bar = '#'.repeat(filled) + '-'.repeat(width - filled);
   process.stdout.write(
     `\r  [${bar}] ${String(pct).padStart(3)}%  ` +
-    `${(offset / 1024).toFixed(1)}/${(total / 1024).toFixed(1)} KB`,
+      `${(offset / 1024).toFixed(1)}/${(total / 1024).toFixed(1)} KB`
   );
 }
 
@@ -69,8 +72,15 @@ async function findDevice(adapter, { name, mac }) {
     for (const m of await adapter.devices()) {
       const dev = await adapter.getDevice(m);
       let advName = null;
-      try { advName = await dev.getName(); }
-      catch { try { advName = await dev.getAlias(); } catch { /* no name yet */ } }
+      try {
+        advName = await dev.getName();
+      } catch {
+        try {
+          advName = await dev.getAlias();
+        } catch {
+          /* no name yet */
+        }
+      }
       if (advName === name) return dev;
     }
     await sleep(1000);
@@ -80,8 +90,10 @@ async function findDevice(adapter, { name, mac }) {
 
 async function connectWithRetry(device, attempts = 8) {
   for (let i = 1; i <= attempts; i++) {
-    try { await device.connect(); return; }
-    catch (err) {
+    try {
+      await device.connect();
+      return;
+    } catch (err) {
       if (i === attempts) throw new Error(`connect failed after ${attempts} tries: ${err.message}`);
       await sleep(2000);
     }
@@ -90,8 +102,8 @@ async function connectWithRetry(device, attempts = 8) {
 
 async function openSession(device) {
   await connectWithRetry(device);
-  const gatt           = await device.gatt();
-  const service        = await gatt.getPrimaryService(SMP_SERVICE_UUID);
+  const gatt = await device.gatt();
+  const service = await gatt.getPrimaryService(SMP_SERVICE_UUID);
   const characteristic = await service.getCharacteristic(SMP_CHAR_UUID);
 
   // Build the service map that the provider expects
@@ -115,7 +127,7 @@ async function main() {
   const expected = mcubootVersion(fw);
 
   const deviceName = process.env.DEVICE_NAME || 'Zephyr';
-  const deviceMac  = process.env.DEVICE_MAC  || null;
+  const deviceMac = process.env.DEVICE_MAC || null;
 
   step(`Update image: ${binPath}`);
   info(`${(fw.byteLength / 1024).toFixed(1)} KB, version ${expected}`);
@@ -129,7 +141,7 @@ async function main() {
 
     step('Scanning for device');
     let device = await findDevice(adapter, { name: deviceName, mac: deviceMac });
-    const mac  = await device.getAddress();
+    const mac = await device.getAddress();
     info(`found "${deviceName}" @ ${mac}`);
 
     step('Connecting');

@@ -13,11 +13,15 @@ async function main() {
           const dev = await adapter.getDevice(m);
           const name = await dev.getName().catch(() => null);
           if (name) console.log(i, name, await dev.getAddress());
-        } catch (e) { /* skip */ }
+        } catch (e) {
+          /* skip */
+        }
       }
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise((r) => setTimeout(r, 1000));
     }
     console.log('Scan done.');
-  } finally { destroy(); }
+  } finally {
+    destroy();
+  }
 }
 main().catch(console.error);

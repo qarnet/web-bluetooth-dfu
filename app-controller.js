@@ -10,12 +10,12 @@ const PROVIDERS = {
 
 /** Valid state machine states. */
 const STATES = {
-  IDLE:         'idle',
-  CONNECTING:   'connecting',
-  CONNECTED:    'connected',
-  UPLOADING:    'uploading',
-  CONFIRMING:   'confirming',
-  DISCONNECTING:'disconnecting',
+  IDLE: 'idle',
+  CONNECTING: 'connecting',
+  CONNECTED: 'connected',
+  UPLOADING: 'uploading',
+  CONFIRMING: 'confirming',
+  DISCONNECTING: 'disconnecting',
 };
 
 /**
@@ -31,13 +31,13 @@ const STATES = {
 export class AppController extends EventTarget {
   constructor() {
     super();
-    this._state       = STATES.IDLE;
-    this._device      = null;   // BluetoothDevice ref for MAC-based reconnect
-    this._connection  = null;
-    this._provider    = null;
-    this._firmware    = null;
-    this._fileSig     = null;
-    this._abortCtrl   = null;   // current operation abort controller
+    this._state = STATES.IDLE;
+    this._device = null; // BluetoothDevice ref for MAC-based reconnect
+    this._connection = null;
+    this._provider = null;
+    this._firmware = null;
+    this._fileSig = null;
+    this._abortCtrl = null; // current operation abort controller
     this._nordicImageSelection = { base: false, app: true };
     this._continuationActive = false; // true after SD phase auto-reconnect; triggers crash retry
     this._nordicPrn = 0;
@@ -47,12 +47,24 @@ export class AppController extends EventTarget {
 
   // ── Public accessors (read-only for UI) ────────────────────────────────────
 
-  get state()       { return this._state; }
-  get isConnected() { return !!this._connection; }
-  get hasProvider() { return !!this._provider; }
-  get hasFirmware() { return !!this._firmware; }
-  get firmwareData() { return this._firmware?.data ?? null; }
-  get providerCapabilities() { return this._provider?.constructor.capabilities ?? {}; }
+  get state() {
+    return this._state;
+  }
+  get isConnected() {
+    return !!this._connection;
+  }
+  get hasProvider() {
+    return !!this._provider;
+  }
+  get hasFirmware() {
+    return !!this._firmware;
+  }
+  get firmwareData() {
+    return this._firmware?.data ?? null;
+  }
+  get providerCapabilities() {
+    return this._provider?.constructor.capabilities ?? {};
+  }
 
   _setState(newState) {
     if (this._state === newState) return;
@@ -63,7 +75,9 @@ export class AppController extends EventTarget {
 
   _assertState(...allowed) {
     if (!allowed.includes(this._state)) {
-      throw new Error(`Invalid operation in state "${this._state}" (expected one of: ${allowed.join(', ')})`);
+      throw new Error(
+        `Invalid operation in state "${this._state}" (expected one of: ${allowed.join(', ')})`
+      );
     }
   }
 
@@ -71,10 +85,10 @@ export class AppController extends EventTarget {
 
   async loadFirmware(file) {
     const data = new Uint8Array(await file.arrayBuffer());
-    const sig  = detectFromFile(data);
+    const sig = detectFromFile(data);
 
     this._firmware = { data, file };
-    this._fileSig  = sig;
+    this._fileSig = sig;
 
     const payload = { name: file.name, size: data.byteLength, protocol: sig };
 
@@ -87,7 +101,9 @@ export class AppController extends EventTarget {
         const revision = view.getUint16(22, true);
         payload.version = `${major}.${minor}.${revision}`;
         const digest = await crypto.subtle.digest('SHA-256', data);
-        const hash = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+        const hash = Array.from(new Uint8Array(digest))
+          .map((b) => b.toString(16).padStart(2, '0'))
+          .join('');
         payload.preflight = `MCUboot magic OK, sha256=${hash.slice(0, 16)}…`;
       } catch {
         // Ignore version parse errors
@@ -102,7 +118,10 @@ export class AppController extends EventTarget {
         payload.nordicInfo = analysis;
         payload.preflight = `Nordic manifest: ${analysis.types.join(', ')}`;
       } catch (err) {
-        this.emit('log', { message: `Failed to analyze Nordic package: ${err.message}`, level: 'warn' });
+        this.emit('log', {
+          message: `Failed to analyze Nordic package: ${err.message}`,
+          level: 'warn',
+        });
       }
     }
 
@@ -112,7 +131,7 @@ export class AppController extends EventTarget {
 
   unloadFirmware() {
     this._firmware = null;
-    this._fileSig  = null;
+    this._fileSig = null;
     this.emit('firmware-unloaded', {});
   }
 
@@ -146,9 +165,9 @@ export class AppController extends EventTarget {
 
       // Wire provider events straight through to the UI
       let attachComplete = false;
-      provider.addEventListener('log',       (e) => this.emit('log',       e.detail));
-      provider.addEventListener('progress',  (e) => this.emit('progress',  e.detail));
-      provider.addEventListener('phase',     (e) => this.emit('phase',     e.detail));
+      provider.addEventListener('log', (e) => this.emit('log', e.detail));
+      provider.addEventListener('progress', (e) => this.emit('progress', e.detail));
+      provider.addEventListener('phase', (e) => this.emit('phase', e.detail));
       provider.addEventListener('needs-reconnect', (e) => {
         const detail = e.detail || {};
         this._awaitingReconnect = true;
@@ -211,16 +230,16 @@ export class AppController extends EventTarget {
       }
     } catch (err) {
       this._setState(STATES.IDLE);
-      this.emitRecoverableError(
-        err.message,
-        () => this.connect(filterConfig),
-        'Retry'
-      );
+      this.emitRecoverableError(err.message, () => this.connect(filterConfig), 'Retry');
     }
   }
 
   disconnect() {
-    if (![STATES.CONNECTED, STATES.UPLOADING, STATES.CONFIRMING, STATES.CONNECTING].includes(this._state)) {
+    if (
+      ![STATES.CONNECTED, STATES.UPLOADING, STATES.CONFIRMING, STATES.CONNECTING].includes(
+        this._state
+      )
+    ) {
       // Nothing to do if already idle or disconnecting
       return;
     }
@@ -286,7 +305,8 @@ export class AppController extends EventTarget {
         // check means the next attempt skips it), stays in DFU via GPREGRET, and re-advertises.
         this._continuationActive = false;
         this.emit('log', {
-          message: 'Continuation DFU crash (bank erase timeout) — reconnect and retry Update Firmware.',
+          message:
+            'Continuation DFU crash (bank erase timeout) — reconnect and retry Update Firmware.',
           level: 'warn',
         });
         // Use explicit manual reconnect here. Auto-reconnect in this crash path can

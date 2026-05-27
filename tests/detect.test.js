@@ -36,23 +36,27 @@ describe('detect', () => {
 
     it('should detect Nordic bootloader', () => {
       const services = new Map([
-        ['0000fe59-0000-1000-8000-00805f9b34fb', {
-          characteristics: new Map([
-            ['8ec90001-f315-4f60-9fb8-838830daea50', {}],
-            ['8ec90002-f315-4f60-9fb8-838830daea50', {}],
-          ]),
-        }],
+        [
+          '0000fe59-0000-1000-8000-00805f9b34fb',
+          {
+            characteristics: new Map([
+              ['8ec90001-f315-4f60-9fb8-838830daea50', {}],
+              ['8ec90002-f315-4f60-9fb8-838830daea50', {}],
+            ]),
+          },
+        ],
       ]);
       assert.strictEqual(detectFromDevice(services), 'nordic');
     });
 
     it('should detect Nordic buttonless', () => {
       const services = new Map([
-        ['0000fe59-0000-1000-8000-00805f9b34fb', {
-          characteristics: new Map([
-            ['8ec90003-f315-4f60-9fb8-838830daea50', {}],
-          ]),
-        }],
+        [
+          '0000fe59-0000-1000-8000-00805f9b34fb',
+          {
+            characteristics: new Map([['8ec90003-f315-4f60-9fb8-838830daea50', {}]]),
+          },
+        ],
       ]);
       assert.strictEqual(detectFromDevice(services), 'nordic-buttonless');
     });
@@ -83,7 +87,10 @@ describe('detect', () => {
     });
 
     it('should throw on mismatch', () => {
-      assert.throws(() => resolveProtocol('smp', 'nordic'), /Device expects NORDIC but the selected file is SMP/);
+      assert.throws(
+        () => resolveProtocol('smp', 'nordic'),
+        /Device expects NORDIC but the selected file is SMP/
+      );
     });
 
     it('should resolve nordic-buttonless to nordic', () => {

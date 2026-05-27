@@ -3,7 +3,7 @@
 
 import { createBluetooth } from 'node-ble';
 
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 async function main() {
   const { bluetooth, destroy } = createBluetooth();
@@ -15,7 +15,7 @@ async function main() {
       for (const m of await adapter.devices()) {
         try {
           dev = await adapter.getDevice(m);
-          const n = (await dev.getName().catch(()=>'')) || (await dev.getAlias().catch(()=>''));
+          const n = (await dev.getName().catch(() => '')) || (await dev.getAlias().catch(() => ''));
           if (n === 'Nordic_Buttonless') break;
           dev = null;
         } catch {}
@@ -24,7 +24,10 @@ async function main() {
       await sleep(1000);
     }
     await adapter.stopDiscovery();
-    if (!dev) { console.log('Not found'); return; }
+    if (!dev) {
+      console.log('Not found');
+      return;
+    }
 
     await dev.connect();
     const gatt = await dev.gatt();
@@ -41,7 +44,9 @@ async function main() {
       }
     }
     await dev.disconnect();
-  } finally { destroy(); }
+  } finally {
+    destroy();
+  }
 }
 
-main().catch(e => console.error(e));
+main().catch((e) => console.error(e));

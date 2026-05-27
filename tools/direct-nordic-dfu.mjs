@@ -15,8 +15,12 @@ EventEmitter.defaultMaxListeners = 0;
 
 const DEVICE_NAME = 'Nordic_Buttonless';
 
-function step(msg) { console.log(`\n▶ ${msg}`); }
-function info(msg)  { console.log(`  ${msg}`); }
+function step(msg) {
+  console.log(`\n▶ ${msg}`);
+}
+function info(msg) {
+  console.log(`  ${msg}`);
+}
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -26,9 +30,14 @@ async function findDevice(adapter, name, maxWait = 30000) {
     for (const m of await adapter.devices()) {
       try {
         const dev = await adapter.getDevice(m);
-        let n1 = '', n2 = '';
-        try { n1 = await dev.getName(); } catch {}
-        try { n2 = await dev.getAlias(); } catch {}
+        let n1 = '',
+          n2 = '';
+        try {
+          n1 = await dev.getName();
+        } catch {}
+        try {
+          n2 = await dev.getAlias();
+        } catch {}
         if (n1 === name || n1.includes(name) || n2 === name || n2.includes(name)) return dev;
       } catch {}
     }
@@ -39,8 +48,10 @@ async function findDevice(adapter, name, maxWait = 30000) {
 
 async function connectWithRetry(device, attempts = 8) {
   for (let i = 1; i <= attempts; i++) {
-    try { await device.connect(); return; }
-    catch (err) {
+    try {
+      await device.connect();
+      return;
+    } catch (err) {
       if (i === attempts) throw new Error(`connect failed: ${err.message}`);
       await sleep(2000);
     }
@@ -51,25 +62,26 @@ async function buildSession(device) {
   await connectWithRetry(device);
   const gatt = await device.gatt();
   const ALL_UUIDS = await gatt.services();
-  info(`Services: ${ALL_UUIDS.map(u=>u.toUpperCase()).join(', ')}`);
+  info(`Services: ${ALL_UUIDS.map((u) => u.toUpperCase()).join(', ')}`);
 
   // Normalize names — node-ble returns 0000FE59-0000...
-  const nordicSvcUuid = ALL_UUIDS.find(u => u.replace(/-/g,'').toLowerCase().endsWith('fe59'))
-                     || ALL_UUIDS.find(u => u.replace(/-/g,'').toLowerCase().includes('fe59'));
+  const nordicSvcUuid =
+    ALL_UUIDS.find((u) => u.replace(/-/g, '').toLowerCase().endsWith('fe59')) ||
+    ALL_UUIDS.find((u) => u.replace(/-/g, '').toLowerCase().includes('fe59'));
   if (!nordicSvcUuid) throw new Error('Nordic DFU service not found');
 
   const service = await gatt.getPrimaryService(nordicSvcUuid);
   const charUuids = await service.characteristics();
-  info(`Characteristics: ${charUuids.map(u=>u.toUpperCase()).join(', ')}`);
+  info(`Characteristics: ${charUuids.map((u) => u.toUpperCase()).join(', ')}`);
 
   // Find control (8ec90001) and packet (8ec90002) by last segment
-  const controlUuid = charUuids.find(u => u.toLowerCase().includes('8ec90001'));
-  const packetUuid  = charUuids.find(u => u.toLowerCase().includes('8ec90002'));
+  const controlUuid = charUuids.find((u) => u.toLowerCase().includes('8ec90001'));
+  const packetUuid = charUuids.find((u) => u.toLowerCase().includes('8ec90002'));
   if (!controlUuid) throw new Error('Control point characteristic not found');
-  if (!packetUuid)  throw new Error('Packet characteristic not found');
+  if (!packetUuid) throw new Error('Packet characteristic not found');
 
   const controlChar = await service.getCharacteristic(controlUuid);
-  const packetChar  = await service.getCharacteristic(packetUuid);
+  const packetChar = await service.getCharacteristic(packetUuid);
 
   const charMap = new Map();
   for (const uuid of charUuids) {
@@ -89,13 +101,13 @@ async function main() {
   }
 
   const zipBuffer = readFileSync(resolve(zipPath));
-  info(`ZIP package: ${zipPath} (${(zipBuffer.byteLength/1024).toFixed(1)} KB)`);
+  info(`ZIP package: ${zipPath} (${(zipBuffer.byteLength / 1024).toFixed(1)} KB)`);
 
   const pkg = new SecureDfuPackage(
     zipBuffer.buffer.slice(zipBuffer.byteOffset, zipBuffer.byteOffset + zipBuffer.byteLength)
   );
   await pkg.load(JSZip);
-  const image = await pkg.getAppImage() ?? await pkg.getBaseImage();
+  const image = (await pkg.getAppImage()) ?? (await pkg.getBaseImage());
   if (!image) throw new Error('No image found in ZIP package');
   info(`manifest type: ${image.type}, init=${image.initFile}, image=${image.imageFile}`);
 
@@ -123,7 +135,9 @@ async function main() {
       const { message, level } = e.detail;
       if (level === 'error' || level === 'info') info(`[${level}] ${message}`);
     });
-    provider.addEventListener('needs-reconnect', () => { needsReconnect = true; });
+    provider.addEventListener('needs-reconnect', () => {
+      needsReconnect = true;
+    });
 
     // Attach skips triggerDfuMode because we're already in DFU
     await provider.attach(session);
@@ -133,7 +147,9 @@ async function main() {
       info('Already in bootloader mode — continuing');
     } else {
       step('Phase 1: device rebooted into bootloader');
-      try { await device.disconnect(); } catch {}
+      try {
+        await device.disconnect();
+      } catch {}
       await sleep(3000);
       step('Phase 2: rescanning');
       const newDevice = await findDevice(adapter, DEVICE_NAME, 30_000);
@@ -159,8 +175,10 @@ async function main() {
     }
 
     await provider.detach();
-    try { await device.disconnect(); } catch {}
-    console.log(`\n✓ PASS — Nordic Secure DFU (${(zipBuffer.byteLength/1024).toFixed(1)} KB)`);
+    try {
+      await device.disconnect();
+    } catch {}
+    console.log(`\n✓ PASS — Nordic Secure DFU (${(zipBuffer.byteLength / 1024).toFixed(1)} KB)`);
   } finally {
     destroy();
   }

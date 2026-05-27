@@ -16,17 +16,17 @@ Recommended: dedicated small Linux box (e.g. Intel NUC) that stays online and
 holds the test rig. Don't use your dev workstation — runner has shell access
 to whatever it's installed on.
 
-| Item | Purpose |
-|---|---|
-| Linux (Ubuntu 22.04+ recommended) | Host OS for the runner |
-| nRF52840 DK via USB | Device under test |
-| BLE adapter (built-in or USB dongle) | Required for headless + Puppeteer tests |
-| `nrfutil` + nRF Command Line Tools | Flashing, recovery |
-| Zephyr / NCS workspace (`west init` + `west update`) | Building firmware |
-| Node.js 18+ | Test harness runtime |
-| Chrome (system install, optional) | Only needed for manual debugging on the host; Puppeteer ships its own bundled Chrome which the tests use |
-| `xvfb` / `xvfb-run` | Lets `make browser-test-headless` run Puppeteer Chrome on a headless host (Web Bluetooth needs a headed Chrome against a real or virtual X server) |
-| udev rules for stable DK device path | Prevents re-enumeration breaking flash step |
+| Item                                                 | Purpose                                                                                                                                            |
+| ---------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux (Ubuntu 22.04+ recommended)                    | Host OS for the runner                                                                                                                             |
+| nRF52840 DK via USB                                  | Device under test                                                                                                                                  |
+| BLE adapter (built-in or USB dongle)                 | Required for headless + Puppeteer tests                                                                                                            |
+| `nrfutil` + nRF Command Line Tools                   | Flashing, recovery                                                                                                                                 |
+| Zephyr / NCS workspace (`west init` + `west update`) | Building firmware                                                                                                                                  |
+| Node.js 18+                                          | Test harness runtime                                                                                                                               |
+| Chrome (system install, optional)                    | Only needed for manual debugging on the host; Puppeteer ships its own bundled Chrome which the tests use                                           |
+| `xvfb` / `xvfb-run`                                  | Lets `make browser-test-headless` run Puppeteer Chrome on a headless host (Web Bluetooth needs a headed Chrome against a real or virtual X server) |
+| udev rules for stable DK device path                 | Prevents re-enumeration breaking flash step                                                                                                        |
 
 Recovery hardening (important — BLE / DK state accumulates):
 
@@ -43,12 +43,12 @@ guards, any pull request — including from forks — would run arbitrary code o
 the HIL host with USB access. The trigger config below limits execution to
 refs the maintainer controls.
 
-| Source | Runs on | Hardware? |
-|---|---|---|
-| Push to `main` | self-hosted | Yes (smoke check) |
-| PR from same repo (collaborator branch) | self-hosted | Yes (gating check) |
-| PR from fork | github-hosted | No — lint/build only |
-| `workflow_dispatch` | self-hosted | Yes (manual) |
+| Source                                  | Runs on       | Hardware?            |
+| --------------------------------------- | ------------- | -------------------- |
+| Push to `main`                          | self-hosted   | Yes (smoke check)    |
+| PR from same repo (collaborator branch) | self-hosted   | Yes (gating check)   |
+| PR from fork                            | github-hosted | No — lint/build only |
+| `workflow_dispatch`                     | self-hosted   | Yes (manual)         |
 
 Fork PRs are filtered out by an `if:` guard on each hardware job. If an
 outside contributor needs hardware validation, the maintainer pulls their
@@ -142,7 +142,7 @@ Push a no-op PR. Confirm:
 - The hardware jobs queue on the self-hosted runner (visible in repo Actions tab).
 - The status checks block the merge button until green.
 - Concurrency queues — push twice quickly, only one job runs at a time.
-- A fork PR from a test account runs *only* the hosted lint/build job, not hardware.
+- A fork PR from a test account runs _only_ the hosted lint/build job, not hardware.
 
 ---
 
@@ -177,12 +177,12 @@ No structural changes to the workflow logic are needed.
 
 ## Common pitfalls
 
-| Symptom | Cause | Fix |
-|---|---|---|
-| Runner offline mid-job | Power save, USB suspend | Disable USB autosuspend; keep host plugged in |
-| `nrfjprog: cannot find device` | DK renumerated | Add udev rules pinning serial → stable path |
-| Puppeteer "Web Bluetooth unavailable" | Stale bundled Chrome or `HEADLESS=1` set in env | Reinstall: `cd tools && npm install`; ensure `HEADLESS` is not exported. The test already passes `--enable-features=WebBluetoothNewPermissionsBackend` at launch |
-| `xvfb-run: command not found` on headless host | Xvfb not installed | `apt install xvfb` (Debian/Ubuntu) or add `pkgs.xvfb-run` to the Nix profile |
-| Tests pass locally but fail in CI | BLE state accumulated | Add `nrfjprog --recover` recovery step; cron weekly host reboot |
-| Two PRs both stuck | Concurrency group misconfigured | Verify `concurrency:` is at workflow level, not job level |
-| Fork PR triggered hardware job | Missing `if:` guard | Add `head.repo.full_name == github.repository` check |
+| Symptom                                        | Cause                                           | Fix                                                                                                                                                              |
+| ---------------------------------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runner offline mid-job                         | Power save, USB suspend                         | Disable USB autosuspend; keep host plugged in                                                                                                                    |
+| `nrfjprog: cannot find device`                 | DK renumerated                                  | Add udev rules pinning serial → stable path                                                                                                                      |
+| Puppeteer "Web Bluetooth unavailable"          | Stale bundled Chrome or `HEADLESS=1` set in env | Reinstall: `cd tools && npm install`; ensure `HEADLESS` is not exported. The test already passes `--enable-features=WebBluetoothNewPermissionsBackend` at launch |
+| `xvfb-run: command not found` on headless host | Xvfb not installed                              | `apt install xvfb` (Debian/Ubuntu) or add `pkgs.xvfb-run` to the Nix profile                                                                                     |
+| Tests pass locally but fail in CI              | BLE state accumulated                           | Add `nrfjprog --recover` recovery step; cron weekly host reboot                                                                                                  |
+| Two PRs both stuck                             | Concurrency group misconfigured                 | Verify `concurrency:` is at workflow level, not job level                                                                                                        |
+| Fork PR triggered hardware job                 | Missing `if:` guard                             | Add `head.repo.full_name == github.repository` check                                                                                                             |

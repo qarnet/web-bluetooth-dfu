@@ -71,7 +71,9 @@ describe('NordicProvider image selection', () => {
   it('applies conservative transfer profile settings', () => {
     const p = makeProvider();
     let reliable = null;
-    p._dfu.setReliableMode = (enabled) => { reliable = enabled; };
+    p._dfu.setReliableMode = (enabled) => {
+      reliable = enabled;
+    };
     p.setTransferProfile('conservative');
     assert.strictEqual(reliable, true);
     assert.deepStrictEqual(p._continuationProbe, { attempts: 6, delayMs: 700 });

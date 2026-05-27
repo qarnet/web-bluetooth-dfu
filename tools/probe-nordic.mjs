@@ -16,6 +16,11 @@ async function main() {
       console.log('UUID', uuid, 'flags:', flags);
     }
     await dev.disconnect();
-  } finally { destroy(); }
+  } finally {
+    destroy();
+  }
 }
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
