@@ -1,0 +1,14 @@
+.direnv/
+node_modules/
+
+# Firmware build outputs
+firmware/build*/
+
+# Vendored third-party code
+vendor/
+
+# Test fixtures (don’t reformat binaries)
+test/fixtures/
+
+# Images
+*.png

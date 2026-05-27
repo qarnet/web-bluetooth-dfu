@@ -1,4 +1,16 @@
 {
   "private": true,
-  "type": "module"
+  "type": "module",
+  "scripts": {
+    "format": "prettier . --write",
+    "lint:format": "prettier . --check",
+    "lint:js": "eslint app.js app-controller.js bluetooth core nordic smp ui",
+    "lint": "npm run lint:format && npm run lint:js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.0.0"
+  }
 }
