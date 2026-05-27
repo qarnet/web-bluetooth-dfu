@@ -42,6 +42,10 @@ export class SecureDfuPackage {
     };
   }
 
-  getBaseImage(JSZip) { return this.getImage(['softdevice', 'bootloader', 'softdevice_bootloader']); }
-  getAppImage(JSZip)  { return this.getImage(['application']); }
+  getBaseImage() {
+    return this.getImage(['softdevice', 'bootloader', 'softdevice_bootloader']);
+  }
+  getAppImage() {
+    return this.getImage(['application']);
+  }
 }

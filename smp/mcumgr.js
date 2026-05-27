@@ -1,19 +1,17 @@
 import { encode as CBOREncode, decode as CBORDecode } from './cbor.js';
 
-const MGMT_OP_READ      = 0;
-const MGMT_OP_READ_RSP  = 1;
-const MGMT_OP_WRITE     = 2;
-const MGMT_OP_WRITE_RSP = 3;
+const MGMT_OP_READ = 0;
+const MGMT_OP_WRITE = 2;
 
-const MGMT_GROUP_ID_OS    = 0;
+const MGMT_GROUP_ID_OS = 0;
 const MGMT_GROUP_ID_IMAGE = 1;
 
 const OS_MGMT_ID_ECHO = 0;
 const OS_MGMT_ID_RESET = 5;
 
-const IMG_MGMT_ID_STATE  = 0;
+const IMG_MGMT_ID_STATE = 0;
 const IMG_MGMT_ID_UPLOAD = 1;
-const IMG_MGMT_ID_ERASE  = 5;
+const IMG_MGMT_ID_ERASE = 5;
 
 const NMP_HEADER_SIZE = 8;
 
@@ -35,9 +33,9 @@ export class MCUManager {
     this._logger = opts.logger || { info: console.log, error: console.error };
     this._reliableMode = opts.reliableMode || false;
 
-    this._chunkTimeout   = opts.chunkTimeout || 5000;
+    this._chunkTimeout = opts.chunkTimeout || 5000;
     this._maxConsecutiveTimeouts = opts.maxConsecutiveTimeouts || 2;
-    this._maxTotalTimeouts       = opts.maxTotalTimeouts || 6;
+    this._maxTotalTimeouts = opts.maxTotalTimeouts || 6;
 
     this._seq = 0;
     this._buffer = new Uint8Array();
@@ -61,7 +59,9 @@ export class MCUManager {
   async stop() {
     try {
       await this._characteristic.stopNotifications();
-    } catch (e) { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     this._characteristic.removeEventListener('characteristicvaluechanged', this._boundNotification);
   }
 
@@ -76,16 +76,13 @@ export class MCUManager {
   }
 
   _buildFrame(op, group, id, data) {
-    const encoded = (data === undefined) ? new Uint8Array()
-      : MCUManager._encode(data);
+    const encoded = data === undefined ? new Uint8Array() : MCUManager._encode(data);
     const lengthLo = encoded.length & 0xff;
     const lengthHi = encoded.length >> 8;
     const groupLo = group & 0xff;
     const groupHi = group >> 8;
     const seq = this._seq;
-    const header = new Uint8Array([
-      op, 0, lengthHi, lengthLo, groupHi, groupLo, seq, id,
-    ]);
+    const header = new Uint8Array([op, 0, lengthHi, lengthLo, groupHi, groupLo, seq, id]);
     const frame = new Uint8Array(header.length + encoded.length);
     frame.set(header, 0);
     frame.set(encoded, header.length);
@@ -103,9 +100,16 @@ export class MCUManager {
     this._logger.info(`Reliable mode ${this._reliableMode ? 'enabled' : 'disabled'}`);
   }
 
-  configureTransport({ mtu, chunkTimeout, maxConsecutiveTimeouts, maxTotalTimeouts, reliableMode } = {}) {
+  configureTransport({
+    mtu,
+    chunkTimeout,
+    maxConsecutiveTimeouts,
+    maxTotalTimeouts,
+    reliableMode,
+  } = {}) {
     if (Number.isFinite(mtu) && mtu > 0) this._mtu = Math.max(Math.floor(mtu), this._minMtu);
-    if (Number.isFinite(chunkTimeout) && chunkTimeout > 0) this._chunkTimeout = Math.floor(chunkTimeout);
+    if (Number.isFinite(chunkTimeout) && chunkTimeout > 0)
+      this._chunkTimeout = Math.floor(chunkTimeout);
     if (Number.isFinite(maxConsecutiveTimeouts) && maxConsecutiveTimeouts > 0) {
       this._maxConsecutiveTimeouts = Math.floor(maxConsecutiveTimeouts);
     }
@@ -149,11 +153,18 @@ export class MCUManager {
     const id = message[7];
     const payloadBuffer = message.buffer.slice(
       message.byteOffset + NMP_HEADER_SIZE,
-      message.byteOffset + message.byteLength,
+      message.byteOffset + message.byteLength
     );
     const data = length ? MCUManager._decode(payloadBuffer) : null;
 
-    this._logger.info('[MCUManager] rx', { op, group, id, seq, length, dataKeys: data ? Object.keys(data) : null });
+    this._logger.info('[MCUManager] rx', {
+      op,
+      group,
+      id,
+      seq,
+      length,
+      dataKeys: data ? Object.keys(data) : null,
+    });
 
     if (group === MGMT_GROUP_ID_IMAGE && id === IMG_MGMT_ID_UPLOAD) {
       if (this._uploadTimeout) {
@@ -173,7 +184,7 @@ export class MCUManager {
           7: 'Response too large',
           8: 'Not supported',
           9: 'Data is corrupt',
-          10: 'Device is busy'
+          10: 'Device is busy',
         };
         const errorMsg = errorMessages[data.rc] || `Device returned error code ${data.rc}`;
         this._logger.error(`Upload failed: ${errorMsg}`);
@@ -182,7 +193,7 @@ export class MCUManager {
             error: `Upload failed: ${errorMsg}`,
             errorCode: data.rc,
             consecutiveTimeouts: this._consecutiveTimeouts,
-            totalTimeouts: this._totalTimeouts
+            totalTimeouts: this._totalTimeouts,
           });
         }
         return;
@@ -204,25 +215,52 @@ export class MCUManager {
 
   // ── Callback hooks ─────────────────────────────────────────────────────────
 
-  onMessage(callback)          { this._messageCallback = callback; return this; }
-  onImageUploadProgress(callback) { this._imageUploadProgressCallback = callback; return this; }
-  onImageUploadFinished(callback) { this._imageUploadFinishedCallback = callback; return this; }
-  onImageUploadError(callback)    { this._imageUploadErrorCallback = callback; return this; }
-  onImageUploadCancelled(callback){ this._imageUploadCancelledCallback = callback; return this; }
+  onMessage(callback) {
+    this._messageCallback = callback;
+    return this;
+  }
+  onImageUploadProgress(callback) {
+    this._imageUploadProgressCallback = callback;
+    return this;
+  }
+  onImageUploadFinished(callback) {
+    this._imageUploadFinishedCallback = callback;
+    return this;
+  }
+  onImageUploadError(callback) {
+    this._imageUploadErrorCallback = callback;
+    return this;
+  }
+  onImageUploadCancelled(callback) {
+    this._imageUploadCancelledCallback = callback;
+    return this;
+  }
 
   // ── High-level commands ────────────────────────────────────────────────────
 
-  cmdReset() { return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_OS, OS_MGMT_ID_RESET); }
-  cmdEcho(text = 'ping') { return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_OS, OS_MGMT_ID_ECHO, { d: text }); }
-  cmdImageState() { return this._sendMessage(MGMT_OP_READ,  MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_STATE); }
-  cmdImageErase() { return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_ERASE, {}); }
+  cmdReset() {
+    return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_OS, OS_MGMT_ID_RESET);
+  }
+  cmdEcho(text = 'ping') {
+    return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_OS, OS_MGMT_ID_ECHO, { d: text });
+  }
+  cmdImageState() {
+    return this._sendMessage(MGMT_OP_READ, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_STATE);
+  }
+  cmdImageErase() {
+    return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_ERASE, {});
+  }
   cmdImageTest(hash) {
-    return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_STATE,
-      { hash: hexToBuf(hash), confirm: false });
+    return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_STATE, {
+      hash: hexToBuf(hash),
+      confirm: false,
+    });
   }
   cmdImageConfirm(hash) {
-    return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_STATE,
-      { hash: hexToBuf(hash), confirm: true });
+    return this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_STATE, {
+      hash: hexToBuf(hash),
+      confirm: true,
+    });
   }
 
   // ── Upload ─────────────────────────────────────────────────────────────────
@@ -235,7 +273,10 @@ export class MCUManager {
   async _uploadNext() {
     if (this._uploadOffset >= this._uploadImage.byteLength) {
       this._uploadIsInProgress = false;
-      if (this._uploadTimeout) { clearTimeout(this._uploadTimeout); this._uploadTimeout = null; }
+      if (this._uploadTimeout) {
+        clearTimeout(this._uploadTimeout);
+        this._uploadTimeout = null;
+      }
       if (this._imageUploadFinishedCallback) this._imageUploadFinishedCallback();
       return;
     }
@@ -244,14 +285,20 @@ export class MCUManager {
     this._uploadTimeout = setTimeout(() => {
       this._consecutiveTimeouts++;
       this._totalTimeouts++;
-      this._logger.info(`Upload chunk timeout (consecutive: ${this._consecutiveTimeouts}, total: ${this._totalTimeouts})`);
+      this._logger.info(
+        `Upload chunk timeout (consecutive: ${this._consecutiveTimeouts}, total: ${this._totalTimeouts})`
+      );
 
       if (this._totalTimeouts >= this._maxTotalTimeouts) {
         this._uploadIsInProgress = false;
         const error = `Upload failed: Device not responding after ${this._totalTimeouts} attempts.`;
         this._logger.error(error);
         if (this._imageUploadErrorCallback) {
-          this._imageUploadErrorCallback({ error, consecutiveTimeouts: this._consecutiveTimeouts, totalTimeouts: this._totalTimeouts });
+          this._imageUploadErrorCallback({
+            error,
+            consecutiveTimeouts: this._consecutiveTimeouts,
+            totalTimeouts: this._totalTimeouts,
+          });
         }
         return;
       }
@@ -268,7 +315,7 @@ export class MCUManager {
         );
         if (this._imageUploadProgressCallback) {
           this._imageUploadProgressCallback({
-            percentage: Math.floor(this._uploadOffset / this._uploadImage.byteLength * 100),
+            percentage: Math.floor((this._uploadOffset / this._uploadImage.byteLength) * 100),
             timeoutAdjusted: true,
             newTimeout: this._chunkTimeout,
             newMtu: this._mtu,
@@ -288,19 +335,24 @@ export class MCUManager {
 
     if (this._imageUploadProgressCallback) {
       this._imageUploadProgressCallback({
-        percentage: Math.floor(this._uploadOffset / this._uploadImage.byteLength * 100)
+        percentage: Math.floor((this._uploadOffset / this._uploadImage.byteLength) * 100),
       });
     }
 
     const encoded = MCUManager._encode(message);
     const length = this._mtu - encoded.byteLength - nmpOverhead;
-    message.data = new Uint8Array(this._uploadImage.slice(this._uploadOffset, this._uploadOffset + length));
+    message.data = new Uint8Array(
+      this._uploadImage.slice(this._uploadOffset, this._uploadOffset + length)
+    );
 
     try {
       await this._sendMessage(MGMT_OP_WRITE, MGMT_GROUP_ID_IMAGE, IMG_MGMT_ID_UPLOAD, message);
     } catch (writeErr) {
       // Write failed (likely disconnect) — treat as error and stop upload
-      if (this._uploadTimeout) { clearTimeout(this._uploadTimeout); this._uploadTimeout = null; }
+      if (this._uploadTimeout) {
+        clearTimeout(this._uploadTimeout);
+        this._uploadTimeout = null;
+      }
       this._uploadIsInProgress = false;
       this._logger.error(`Upload write failed: ${writeErr.message || writeErr}`);
       if (this._imageUploadErrorCallback) {
@@ -334,7 +386,10 @@ export class MCUManager {
 
   cancelUpload() {
     if (!this._uploadIsInProgress) return;
-    if (this._uploadTimeout) { clearTimeout(this._uploadTimeout); this._uploadTimeout = null; }
+    if (this._uploadTimeout) {
+      clearTimeout(this._uploadTimeout);
+      this._uploadTimeout = null;
+    }
     this._uploadIsInProgress = false;
     // Preserve _uploadOffset for potential resume; don't reset to 0
     this._uploadImage = null;
@@ -366,7 +421,8 @@ export class MCUManager {
     const view = new DataView(image);
 
     if (view.byteLength < 32) throw new Error('Invalid image (too short file)');
-    if (view.getUint32(0, true) !== 0x96f3b83d) throw new Error('Invalid image (wrong magic bytes)');
+    if (view.getUint32(0, true) !== 0x96f3b83d)
+      throw new Error('Invalid image (wrong magic bytes)');
     if (view.getUint32(4, true) !== 0) throw new Error('Invalid image (wrong load address)');
 
     const headerSize = view.getUint16(8, true);
@@ -374,22 +430,27 @@ export class MCUManager {
     const imageSize = view.getUint32(12, true);
     info.imageSize = imageSize;
 
-    if (view.byteLength < imageSize + headerSize) throw new Error('Invalid image (wrong image size)');
+    if (view.byteLength < imageSize + headerSize)
+      throw new Error('Invalid image (wrong image size)');
     if (view.getUint32(16, true) !== 0x00) throw new Error('Invalid image (wrong flags)');
 
     const version = `${view.getUint8(20)}.${view.getUint8(21)}.${view.getUint16(22, true)}`;
     info.version = version;
 
     const totalHashLen = imageSize + headerSize + protected_tlv_length;
-    const hashBytes = new Uint8Array(await crypto.subtle.digest('SHA-256', image.slice(0, totalHashLen)));
-    info.hash = [...hashBytes].map(b => b.toString(16).padStart(2, '0')).join('');
+    const hashBytes = new Uint8Array(
+      await crypto.subtle.digest('SHA-256', image.slice(0, totalHashLen))
+    );
+    info.hash = [...hashBytes].map((b) => b.toString(16).padStart(2, '0')).join('');
 
     let offset = headerSize + imageSize;
     let tlv_end = offset;
 
     if (protected_tlv_length > 0) {
       if (view.getUint16(offset, true) !== 0x6908) {
-        throw new Error(`Expected protected TLV magic number. (0x${offset.toString(16)}: 0x${view.getUint16(offset, true).toString(16)})`);
+        throw new Error(
+          `Expected protected TLV magic number. (0x${offset.toString(16)}: 0x${view.getUint16(offset, true).toString(16)})`
+        );
       }
       tlv_end = view.getUint16(offset + 2, true) + offset;
       for (const tlv of this._extractTlvs(view.buffer.slice(offset + 4, tlv_end))) {
@@ -399,7 +460,9 @@ export class MCUManager {
     }
 
     if (view.getUint16(offset, true) !== 0x6907) {
-      throw new Error(`Expected TLV magic number. (0x${offset.toString(16)}: 0x${view.getUint16(offset, true).toString(16)})`);
+      throw new Error(
+        `Expected TLV magic number. (0x${offset.toString(16)}: 0x${view.getUint16(offset, true).toString(16)})`
+      );
     }
     tlv_end = view.getUint16(offset + 2, true) + offset;
     for (const tlv of this._extractTlvs(view.buffer.slice(offset + 4, tlv_end))) {

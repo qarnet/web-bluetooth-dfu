@@ -2,16 +2,22 @@ import { DfuProvider } from '../core/provider.js';
 import { MCUManager } from './mcumgr.js';
 
 function bufToHex(buf) {
-  return Array.from(buf).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(buf)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 function fmtVersion(v) {
-  return (typeof v === 'string' && v) ? v : 'unknown';
+  return typeof v === 'string' && v ? v : 'unknown';
 }
 
 export class SmpProvider extends DfuProvider {
-  static get id()    { return 'smp'; }
-  static get label() { return 'SMP / MCUboot'; }
+  static get id() {
+    return 'smp';
+  }
+  static get label() {
+    return 'SMP / MCUboot';
+  }
   static get capabilities() {
     return {
       hasSlots: true,
@@ -60,8 +66,10 @@ export class SmpProvider extends DfuProvider {
     this._mcuMgr = new MCUManager({
       characteristic,
       mtu: this._mtu,
-      logger: { info: (...a) => this.emit('log', { message: a.join(' '), level: 'info' }),
-                error: (...a) => this.emit('log', { message: a.join(' '), level: 'error' }) },
+      logger: {
+        info: (...a) => this.emit('log', { message: a.join(' '), level: 'info' }),
+        error: (...a) => this.emit('log', { message: a.join(' '), level: 'error' }),
+      },
     });
     await this._mcuMgr.start();
     this._applyTransferProfile();
@@ -111,11 +119,29 @@ export class SmpProvider extends DfuProvider {
     if (!this._mcuMgr) return;
     const profile = this._transferProfile;
     if (profile === 'conservative') {
-      this._mcuMgr.configureTransport({ mtu: 128, chunkTimeout: 8000, maxConsecutiveTimeouts: 3, maxTotalTimeouts: 8, reliableMode: true });
+      this._mcuMgr.configureTransport({
+        mtu: 128,
+        chunkTimeout: 8000,
+        maxConsecutiveTimeouts: 3,
+        maxTotalTimeouts: 8,
+        reliableMode: true,
+      });
     } else if (profile === 'aggressive') {
-      this._mcuMgr.configureTransport({ mtu: 244, chunkTimeout: 4000, maxConsecutiveTimeouts: 2, maxTotalTimeouts: 6, reliableMode: false });
+      this._mcuMgr.configureTransport({
+        mtu: 244,
+        chunkTimeout: 4000,
+        maxConsecutiveTimeouts: 2,
+        maxTotalTimeouts: 6,
+        reliableMode: false,
+      });
     } else {
-      this._mcuMgr.configureTransport({ mtu: this._mtu, chunkTimeout: 5000, maxConsecutiveTimeouts: 2, maxTotalTimeouts: 6, reliableMode: false });
+      this._mcuMgr.configureTransport({
+        mtu: this._mtu,
+        chunkTimeout: 5000,
+        maxConsecutiveTimeouts: 2,
+        maxTotalTimeouts: 6,
+        reliableMode: false,
+      });
     }
   }
 
@@ -138,11 +164,11 @@ export class SmpProvider extends DfuProvider {
 
     const images = msg.images ?? [];
     return images.map((img) => ({
-      slot:      img.slot,
-      version:   fmtVersion(img.version),
-      hash:      img.hash ? bufToHex(img.hash) : '',
-      active:    !!img.active,
-      pending:   !!img.pending,
+      slot: img.slot,
+      version: fmtVersion(img.version),
+      hash: img.hash ? bufToHex(img.hash) : '',
+      active: !!img.active,
+      pending: !!img.pending,
       confirmed: !!img.confirmed,
     }));
   }
@@ -152,7 +178,7 @@ export class SmpProvider extends DfuProvider {
     if (typeof File !== 'undefined' && file instanceof File) {
       data = new Uint8Array(await file.arrayBuffer());
     } else if (file instanceof Uint8Array || file instanceof ArrayBuffer) {
-      data = (file instanceof ArrayBuffer) ? new Uint8Array(file) : file;
+      data = file instanceof ArrayBuffer ? new Uint8Array(file) : file;
     } else {
       throw new Error('loadFirmware expects File, Uint8Array, or ArrayBuffer');
     }
@@ -182,7 +208,7 @@ export class SmpProvider extends DfuProvider {
 
     try {
       await this._doUpload(startOffset);
-      this._resumeOffset = 0;  // Clear on success
+      this._resumeOffset = 0; // Clear on success
     } catch (err) {
       // Save offset for potential resume
       this._resumeOffset = this._mcuMgr.uploadOffset;
@@ -191,7 +217,7 @@ export class SmpProvider extends DfuProvider {
 
     this.emit('phase', { phase: 'test', label: 'Marking for test…' });
     const hash = await this._getUploadedHash();
-    const data = await this._sendAndWait((done) => {
+    await this._sendAndWait((done) => {
       this._mcuMgr.onMessage((msg) => {
         // Image test response: op=3 (WRITE_RSP), group=1, id=0
         if (msg.op === 3 && msg.group === 1 && msg.id === 0) done(msg.data);
@@ -199,8 +225,15 @@ export class SmpProvider extends DfuProvider {
       this._mcuMgr.cmdImageTest(hash);
     });
     this.emit('phase', { phase: 'reset', label: 'Resetting device…' });
-    this.emit('log', { message: 'Resetting device — will swap and boot new firmware…', level: 'info' });
-    try { await this._mcuMgr.cmdReset(); } catch { /* timeout expected */ }
+    this.emit('log', {
+      message: 'Resetting device — will swap and boot new firmware…',
+      level: 'info',
+    });
+    try {
+      await this._mcuMgr.cmdReset();
+    } catch {
+      /* timeout expected */
+    }
 
     this.emit('needs-reconnect', {});
     return { needsConfirm: true };
@@ -211,7 +244,10 @@ export class SmpProvider extends DfuProvider {
     const slots = await this.readState();
     const s0 = slots.find((s) => s.slot === 0);
     if (!s0 || !s0.active || s0.confirmed) {
-      this.emit('log', { message: 'Slot 0 is not active or already confirmed — nothing to confirm.', level: 'warn' });
+      this.emit('log', {
+        message: 'Slot 0 is not active or already confirmed — nothing to confirm.',
+        level: 'warn',
+      });
       return;
     }
     await this._sendAndWait((done) => {
@@ -231,14 +267,22 @@ export class SmpProvider extends DfuProvider {
       let lastPct = -1;
       this._mcuMgr.onImageUploadProgress((ev) => {
         const pct = ev.percentage ?? 0;
-        const offset = Math.round(pct / 100 * this._firmware.byteLength);
+        const offset = Math.round((pct / 100) * this._firmware.byteLength);
         if (pct !== lastPct) {
           lastPct = pct;
-          this.emit('progress', { phase: 'upload', currentBytes: offset, totalBytes: this._firmware.byteLength });
+          this.emit('progress', {
+            phase: 'upload',
+            currentBytes: offset,
+            totalBytes: this._firmware.byteLength,
+          });
         }
       });
       this._mcuMgr.onImageUploadFinished(() => {
-        this.emit('progress', { phase: 'upload', currentBytes: this._firmware.byteLength, totalBytes: this._firmware.byteLength });
+        this.emit('progress', {
+          phase: 'upload',
+          currentBytes: this._firmware.byteLength,
+          totalBytes: this._firmware.byteLength,
+        });
         resolve();
       });
       this._mcuMgr.onImageUploadError((err) => reject(new Error(err.error)));
@@ -256,7 +300,10 @@ export class SmpProvider extends DfuProvider {
   _sendAndWait(callback, timeoutMs = 10000) {
     return new Promise((resolve, reject) => {
       const t = setTimeout(() => reject(new Error('SMP timeout')), timeoutMs);
-      callback((value) => { clearTimeout(t); resolve(value); });
+      callback((value) => {
+        clearTimeout(t);
+        resolve(value);
+      });
     });
   }
 }

@@ -51,8 +51,7 @@ export default [
     },
     rules: {
       // Keep the ruleset intentionally small; this repo is vanilla ESM.
-      // Start with warnings to avoid blocking existing code.
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
     },
   },
 ];
