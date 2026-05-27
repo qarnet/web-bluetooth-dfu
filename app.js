@@ -1,60 +1,59 @@
 import { controller } from './app-controller.js';
-import { loadFilterConfig, saveFilterConfig, isValidUuid, normalizeUuid } from './core/filter-store.js';
+import { loadFilterConfig, saveFilterConfig, normalizeUuid } from './core/filter-store.js';
 import { shouldDisableDfuButton } from './ui/dfu-button-state.js';
 
 globalThis.dfuController = controller;
 
 // ── DOM refs ─────────────────────────────────────────────────────────────────
 
-const fileInput       = document.getElementById('file-input');
-const fileLabel       = document.getElementById('file-label');
-const fileNameEl      = document.getElementById('file-name');
-const fileSizeEl      = document.getElementById('file-size');
-const fileRow         = document.querySelector('.file-row');
-const protocolBadge   = document.getElementById('protocol-badge');
-const btnConnect      = document.getElementById('btn-connect');
-const btnRowConnect   = document.getElementById('btn-row-connect');
+const fileInput = document.getElementById('file-input');
+const fileLabel = document.getElementById('file-label');
+const fileNameEl = document.getElementById('file-name');
+const fileSizeEl = document.getElementById('file-size');
+const fileRow = document.querySelector('.file-row');
+const protocolBadge = document.getElementById('protocol-badge');
+const btnConnect = document.getElementById('btn-connect');
+const btnRowConnect = document.getElementById('btn-row-connect');
 const btnRowConnected = document.getElementById('btn-row-connected');
-const btnRefresh      = document.getElementById('btn-refresh');
-const btnSmpDiag      = document.getElementById('btn-smp-diag');
-const btnSmpEcho      = document.getElementById('btn-smp-echo');
-const btnSmpReset     = document.getElementById('btn-smp-reset');
-const btnDisconnect   = document.getElementById('btn-disconnect');
-const slotsEl         = document.getElementById('slots');
-const btnDfu          = document.getElementById('btn-dfu');
-const btnCancel       = document.getElementById('btn-cancel');
-const btnConfirm      = document.getElementById('btn-confirm');
-const btnEraseSlot    = document.getElementById('btn-erase-slot');
-const btnReconnect    = document.getElementById('btn-reconnect');
-const progressWrap    = document.getElementById('progress-wrap');
-const progressFill    = document.getElementById('progress-fill');
-const progressText    = document.getElementById('progress-text');
-const secLog          = document.getElementById('sec-log');
-const logEntries      = document.getElementById('log-entries');
+const btnRefresh = document.getElementById('btn-refresh');
+const btnSmpDiag = document.getElementById('btn-smp-diag');
+const btnSmpEcho = document.getElementById('btn-smp-echo');
+const btnSmpReset = document.getElementById('btn-smp-reset');
+const btnDisconnect = document.getElementById('btn-disconnect');
+const slotsEl = document.getElementById('slots');
+const btnDfu = document.getElementById('btn-dfu');
+const btnCancel = document.getElementById('btn-cancel');
+const btnConfirm = document.getElementById('btn-confirm');
+const btnEraseSlot = document.getElementById('btn-erase-slot');
+const btnReconnect = document.getElementById('btn-reconnect');
+const progressWrap = document.getElementById('progress-wrap');
+const progressFill = document.getElementById('progress-fill');
+const progressText = document.getElementById('progress-text');
+const secLog = document.getElementById('sec-log');
+const logEntries = document.getElementById('log-entries');
 
 // Filter UI refs (created in index.html)
-const filterToggle    = document.getElementById('filter-toggle');
-const filterPanel     = document.getElementById('filter-panel');
-const scanAllCheck    = document.getElementById('scan-all');
+const filterToggle = document.getElementById('filter-toggle');
+const filterPanel = document.getElementById('filter-panel');
+const scanAllCheck = document.getElementById('scan-all');
 const namePrefixInput = document.getElementById('name-prefix');
-const serviceUuidInput= document.getElementById('service-uuid');
+const serviceUuidInput = document.getElementById('service-uuid');
 
 // Multi-image UI refs
-const multiImageRow   = document.getElementById('multi-image-row');
+const multiImageRow = document.getElementById('multi-image-row');
 const nordicBaseCheck = document.getElementById('nordic-base-check');
-const nordicAppCheck  = document.getElementById('nordic-app-check');
-const multiImageInfo  = document.getElementById('multi-image-info');
+const nordicAppCheck = document.getElementById('nordic-app-check');
+const multiImageInfo = document.getElementById('multi-image-info');
 const transferProfileRow = document.getElementById('transfer-profile-row');
 const transferProfileSelect = document.getElementById('transfer-profile-select');
 
 // Reliable mode UI refs
-const reliableModeRow   = document.getElementById('reliable-mode-row');
 const reliableModeCheck = document.getElementById('reliable-mode-check');
 
 // Firmware version display refs
-const firmwareInfo    = document.getElementById('firmware-info');
-const fwInfoPlanned   = document.getElementById('fw-info-planned');
-const fwInfoCurrent   = document.getElementById('fw-info-current');
+const firmwareInfo = document.getElementById('firmware-info');
+const fwInfoPlanned = document.getElementById('fw-info-planned');
+const fwInfoCurrent = document.getElementById('fw-info-current');
 const fwInfoPreflight = document.getElementById('fw-info-preflight');
 
 // ── State ────────────────────────────────────────────────────────────────────
@@ -86,7 +85,7 @@ controller.addEventListener('firmware-loaded', (e) => {
   // Nordic image-selection checkboxes
   if (protocol === 'nordic' && nordicInfo) {
     const hasBase = nordicInfo.hasBase;
-    const hasApp  = nordicInfo.hasApp;
+    const hasApp = nordicInfo.hasApp;
     multiImageRow.style.display = '';
     nordicBaseCheck.disabled = !hasBase;
     nordicAppCheck.disabled = !hasApp;
@@ -144,7 +143,7 @@ controller.addEventListener('disconnected', (e) => {
   if (reason === 'device') {
     log('Device disconnected', 'error', {
       action: () => controller.connect(getFilterConfig()),
-      label: 'Reconnect'
+      label: 'Reconnect',
     });
   }
   if (reason === 'user') log('Disconnected', 'info');
@@ -165,7 +164,7 @@ controller.addEventListener('state-changed', (e) => {
   const { state } = e.detail;
   const isBusy = ['connecting', 'uploading', 'confirming', 'disconnecting'].includes(state);
   fileLabel.classList.toggle('disabled', isBusy);
-  fileInput.disabled  = isBusy;
+  fileInput.disabled = isBusy;
   btnConnect.disabled = isBusy || state === 'connected';
   btnRefresh.disabled = isBusy;
   btnDisconnect.disabled = isBusy;
@@ -200,7 +199,9 @@ controller.addEventListener('update-complete', () => {
       ts: Date.now(),
     };
     localStorage.setItem('dfu-last-firmware', JSON.stringify(last));
-  } catch { /* storage may be disabled */ }
+  } catch {
+    /* storage may be disabled */
+  }
 });
 
 controller.addEventListener('error', (e) => {
@@ -260,7 +261,7 @@ function updateConfirmButton(enabled) {
 }
 
 function showConnected(isConnected) {
-  btnRowConnect.style.display   = isConnected ? 'none' : '';
+  btnRowConnect.style.display = isConnected ? 'none' : '';
   btnRowConnected.style.display = isConnected ? '' : 'none';
 }
 
@@ -268,7 +269,7 @@ function setProgress(offset, total) {
   progressWrap.style.display = '';
   const pct = total ? Math.round((offset / total) * 100) : 0;
   progressFill.style.width = `${pct}%`;
-  progressText.textContent  = `${(offset / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)} KB`;
+  progressText.textContent = `${(offset / 1024).toFixed(1)} / ${(total / 1024).toFixed(1)} KB`;
 }
 
 function setPhase(label) {
@@ -276,7 +277,8 @@ function setPhase(label) {
 }
 
 function showProtocol(providerId) {
-  const p = providerId === 'smp' ? 'SMP / MCUboot' : providerId === 'nordic' ? 'Nordic Secure DFU' : '';
+  const p =
+    providerId === 'smp' ? 'SMP / MCUboot' : providerId === 'nordic' ? 'Nordic Secure DFU' : '';
   protocolBadge.textContent = p;
   protocolBadge.style.display = p ? 'inline' : 'none';
   protocolBadge.dataset.protocol = providerId || '';
@@ -305,9 +307,9 @@ function renderSlots(slots) {
   }
   for (const s of slots) {
     const badges = [
-      s.active    ? '<span class="badge badge-green">active</span>'    : '',
-      s.pending   ? '<span class="badge badge-yellow">pending</span>'  : '',
-      s.confirmed ? '<span class="badge badge-blue">confirmed</span>'  : '',
+      s.active ? '<span class="badge badge-green">active</span>' : '',
+      s.pending ? '<span class="badge badge-yellow">pending</span>' : '',
+      s.confirmed ? '<span class="badge badge-blue">confirmed</span>' : '',
     ].join('');
     const el = document.createElement('div');
     el.className = 'slot';
@@ -322,13 +324,16 @@ function renderSlots(slots) {
   }
   // Show erase button if slot 1 exists and has data (not empty)
   const slot1 = slots.find((s) => s.slot === 1);
-  btnEraseSlot.style.display = (slot1 && slot1.version !== 'empty') ? '' : 'none';
+  btnEraseSlot.style.display = slot1 && slot1.version !== 'empty' ? '' : 'none';
 }
 
 function checkPending(slots) {
   const s0 = slots.find((s) => s.slot === 0);
   if (s0 && s0.active && !s0.confirmed) {
-    log('New image is active but not yet confirmed — if the device reboots now it will revert. Click "Confirm" to make it permanent.', 'warn');
+    log(
+      'New image is active but not yet confirmed — if the device reboots now it will revert. Click "Confirm" to make it permanent.',
+      'warn'
+    );
     updateConfirmButton(true);
   } else {
     updateConfirmButton(false);
@@ -455,7 +460,10 @@ function startScanTimeout() {
 }
 
 function clearScanTimeout() {
-  if (scanTimeoutId) { clearTimeout(scanTimeoutId); scanTimeoutId = null; }
+  if (scanTimeoutId) {
+    clearTimeout(scanTimeoutId);
+    scanTimeoutId = null;
+  }
 }
 
 // ── Connect ─────────────────────────────────────────────────────────────────
@@ -464,7 +472,7 @@ btnConnect.addEventListener('click', async () => {
   startScanTimeout();
   try {
     await controller.connect(getFilterConfig());
-  } catch (err) {
+  } catch {
     // Controller emits recoverable-error with retry action; don't duplicate log here
     showConnected(false);
   }
@@ -480,7 +488,11 @@ btnDisconnect.addEventListener('click', () => {
 // ── Refresh slots ──────────────────────────────────────────────────────────
 
 btnRefresh.addEventListener('click', async () => {
-  try { await controller.refreshSlots(); } catch (err) { log(err.message, 'error'); }
+  try {
+    await controller.refreshSlots();
+  } catch (err) {
+    log(err.message, 'error');
+  }
 });
 
 // ── DFU ────────────────────────────────────────────────────────────────────────
@@ -589,7 +601,7 @@ btnSmpReset.addEventListener('click', async () => {
 
 // ── Log export ─────────────────────────────────────────────────────────────
 
-const btnCopyLog     = document.getElementById('btn-copy-log');
+const btnCopyLog = document.getElementById('btn-copy-log');
 const btnDownloadLog = document.getElementById('btn-download-log');
 const btnDownloadLogJson = document.getElementById('btn-download-log-json');
 
@@ -603,7 +615,7 @@ btnCopyLog.addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(getLogText());
     btnCopyLog.textContent = 'Copied!';
-    setTimeout(() => btnCopyLog.textContent = 'Copy logs', 1500);
+    setTimeout(() => (btnCopyLog.textContent = 'Copy logs'), 1500);
   } catch {
     log('Clipboard write failed', 'warn');
   }
