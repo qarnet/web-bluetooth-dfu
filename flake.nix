@@ -6,8 +6,14 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, flake-utils }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         pkgs = import nixpkgs { inherit system; };
       in
@@ -63,6 +69,9 @@
 
               # Browser E2E tests
               xvfb
+
+              # LSP for opencode
+              typescript-language-server
             ];
 
             # Avoid puppeteer trying to download Chrome.
@@ -78,5 +87,6 @@
               export PATH="$PWD/node_modules/.bin:$PATH"
             '';
           };
-      });
+      }
+    );
 }

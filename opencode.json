@@ -3,5 +3,11 @@
   "instructions": [
     "~/.config/opencode/rules/ncs-nrfutil.md",
     "~/.config/opencode/rules/web-bluetooth-smp.md"
-  ]
+  ],
+  "lsp": {
+    "typescript": {
+      "command": ["typescript-language-server", "--stdio"],
+      "extensions": [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts"]
+    }
+  }
 }
