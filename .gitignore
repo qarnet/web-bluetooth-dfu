@@ -46,3 +46,4 @@ firmware/.cache
 
 # direnv / Nix
 .direnv/
+.envrc
